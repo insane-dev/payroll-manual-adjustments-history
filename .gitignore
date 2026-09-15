@@ -25,6 +25,7 @@
 # Composer
 composer.phar
 /vendor/
+/var/
 
 # JetBrains IDEs
 .idea/
