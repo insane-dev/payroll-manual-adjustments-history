@@ -1,4 +1,4 @@
-.PHONY: setup test demo validate lint check shell
+.PHONY: setup test test-unit test-integration test-acceptance demo validate lint check shell
 
 setup:
 	docker compose build
@@ -6,6 +6,15 @@ setup:
 
 test:
 	docker compose run --rm php composer test
+
+test-unit:
+	docker compose run --rm php composer test:unit
+
+test-integration:
+	docker compose run --rm php composer test:integration
+
+test-acceptance:
+	docker compose run --rm php composer test:acceptance
 
 demo:
 	docker compose run --rm php composer demo

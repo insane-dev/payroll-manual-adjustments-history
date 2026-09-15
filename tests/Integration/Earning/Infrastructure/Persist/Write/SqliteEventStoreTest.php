@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Earning\Infrastructure\Persist\Write;
+namespace App\Tests\Integration\Earning\Infrastructure\Persist\Write;
 
 use App\Earning\Application\Exception\ConcurrentStreamWrite;
 use App\Earning\Application\Exception\EarningLineNotFound;

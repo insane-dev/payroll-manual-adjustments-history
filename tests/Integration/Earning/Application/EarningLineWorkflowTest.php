@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Earning\Application;
+namespace App\Tests\Integration\Earning\Application;
 
 use App\Earning\Application\Command\AddManualAdjustment;
 use App\Earning\Application\Command\CreateEarningLine;

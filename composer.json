@@ -27,6 +27,9 @@
     },
     "scripts": {
         "test": "phpunit",
+        "test:unit": "phpunit --testsuite Unit",
+        "test:integration": "phpunit --testsuite Integration",
+        "test:acceptance": "phpunit --testsuite Acceptance",
         "demo": "php bin/demo.php",
         "lint": "find src bin tests -name '*.php' -print0 | xargs -0 -n1 php -l"
     }

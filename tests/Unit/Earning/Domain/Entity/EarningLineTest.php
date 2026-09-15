@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Earning\Domain\Entity;
+namespace App\Tests\Unit\Earning\Domain\Entity;
 
 use App\Earning\Domain\Entity\EarningLine;
 use App\Earning\Domain\Entity\ManualAdjustment;

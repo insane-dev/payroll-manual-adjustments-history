@@ -4,7 +4,9 @@
          bootstrap="vendor/autoload.php" colors="true" cacheDirectory=".phpunit.cache"
          failOnWarning="true" failOnRisky="true" failOnDeprecation="true">
     <testsuites>
-        <testsuite name="Payroll"><directory>tests</directory></testsuite>
+        <testsuite name="Unit"><directory>tests/Unit</directory></testsuite>
+        <testsuite name="Integration"><directory>tests/Integration</directory></testsuite>
+        <testsuite name="Acceptance"><directory>tests/Acceptance</directory></testsuite>
     </testsuites>
     <source><include><directory>src</directory></include></source>
 </phpunit>

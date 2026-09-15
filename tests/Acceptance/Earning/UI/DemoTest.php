@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Earning\UI;
+namespace App\Tests\Acceptance\Earning\UI;
 
 use PDO;
 use PHPUnit\Framework\TestCase;
@@ -41,7 +41,7 @@ final class DemoTest extends TestCase
     private function runCli(string $database, string ...$arguments): array
     {
         $process = proc_open(
-            [PHP_BINARY, __DIR__ . '/../../../bin/demo.php', ...$arguments],
+            [PHP_BINARY, __DIR__ . '/../../../../bin/demo.php', ...$arguments],
             [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             env_vars: ['PAYROLL_DATABASE' => $database],

@@ -99,7 +99,7 @@ An ignored automatic update produces no event. Updating an unlocked line to the 
 | `src/Earning/UI/Cli` | CLI scenario, input handling, and history output |
 | `src/Shared` | Business-independent Clock contract and Carbon implementation |
 | `bin/demo.php` | Configuration and composition root with explicit constructor injection |
-| `tests/Earning` | Tests organized by module and layer |
+| `tests/Unit`, `tests/Integration`, `tests/Acceptance` | Tests organized by category, then module and layer |
 
 See [Module and Layer Structure](docs/technical-decisions.md#module-and-layer-structure) for the full convention and dependency rules. Optional folders are added only when needed. `Persist/Read` will hold a dedicated read adapter if one is introduced; this PoC reads history through the aggregate repository.
 
@@ -142,6 +142,14 @@ SQLite triggers reject UPDATE, DELETE, and replacement of existing events. The e
 - Database triggers protect normal SQL writes, not a privileged owner who can remove triggers or replace the database file. Production audit guarantees also require controlled database access and backups.
 
 ## Tests
+
+| Suite | What it tests | Docker command | Local command |
+| --- | --- | --- | --- |
+| Unit | Domain rules and replay in memory | `make test-unit` | `composer test:unit` |
+| Integration | Handlers, repositories and real SQLite persistence | `make test-integration` | `composer test:integration` |
+| Acceptance | CLI behavior and history retrieval in separate processes | `make test-acceptance` | `composer test:acceptance` |
+
+`make test` or `composer test` runs all suites. Within each category, directories and namespaces mirror the module and layer being tested.
 
 The test suite covers:
 

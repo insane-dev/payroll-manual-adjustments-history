@@ -14,16 +14,16 @@ The agreed domain vocabulary is defined in [Ubiquitous Language](ubiquitous-lang
 
 ## Runtime and Dependencies
 
-| Component | Choice | Purpose |
-| --- | --- | --- |
-| PHP | 8.4+ | Application runtime |
-| Money | `moneyphp/money` | Exact monetary values and arithmetic without floating-point amounts |
-| Date and Time | `nesbot/carbon` | Date and time handling; use immutable values for recorded timestamps |
-| Identifiers | `ramsey/uuid` | UUID generation and validation |
-| Persistence | SQLite | Local event persistence |
-| Tests | PHPUnit | Business-rule and persistence verification |
-| Local Environment | Docker Compose | Reproducible runtime and development commands |
-| Command Shortcuts | Makefile | Convenient entry points for routine development tasks |
+| Component         | Choice           | Purpose                                                              |
+|-------------------|------------------|----------------------------------------------------------------------|
+| PHP               | 8.4+             | Application runtime                                                  |
+| Money             | `moneyphp/money` | Exact monetary values and arithmetic without floating-point amounts  |
+| Date and Time     | `nesbot/carbon`  | Date and time handling; use immutable values for recorded timestamps |
+| Identifiers       | `ramsey/uuid`    | UUID generation and validation                                       |
+| Persistence       | SQLite           | Local event persistence                                              |
+| Tests             | PHPUnit          | Business-rule and persistence verification                           |
+| Local Environment | Docker Compose   | Reproducible runtime and development commands                        |
+| Command Shortcuts | Makefile         | Convenient entry points for routine development tasks                |
 
 Exact dependency versions are recorded in `composer.lock`, with dependency resolution targeting PHP 8.4.
 
@@ -80,21 +80,21 @@ The tree is a convention for all modules, not a list of currently implemented co
 
 ### Current Placement
 
-| Component | Location | Reason |
-| --- | --- | --- |
-| Clock contract | `Shared/Application/Clock.php` | Business-independent source of time |
-| Carbon clock | `Shared/Infrastructure/Clock/CarbonClock.php` | Implementation of the shared clock contract |
-| Earning Line, Manual Adjustment | `Earning/Domain/Entity/` | Both have identity; Earning Line is the aggregate root |
-| Line, adjustment and author IDs | `Earning/Domain/Value/` | Immutable, module-specific Value Objects |
-| Domain events | `Earning/Domain/Event/` | Facts belonging to the Earning module |
-| Earning Line Repository | `Earning/Domain/Repository/EarningLineRepository.php` | Interface for loading and saving an aggregate |
-| Command handlers | `Earning/Application/Command/Handler/` | Use-case orchestration |
-| History query and handler | `Earning/Application/Query/` and `Query/Handler/` | Read use case |
-| Adjustment History | `Earning/Application/Query/Result/AdjustmentHistory.php` | Read DTO, not a domain entity |
-| Event Store contract | `Earning/Application/Port/EventStore.php` | Technical persistence port typed to this module's IDs and events |
-| Event serializer | `Earning/Infrastructure/Mapper/EventSerializer.php` | Maps domain events to versioned JSON and back |
-| Event-sourced repository, SQLite Event Store and schema | `Earning/Infrastructure/Persist/Write/` | Persistence of the authoritative aggregate event stream |
-| Demo command | `Earning/UI/Cli/DemoCommand.php` | CLI arguments, scenario execution through handlers, and formatted history |
+| Component                                               | Location                                                 | Reason                                                                    |
+|---------------------------------------------------------|----------------------------------------------------------|---------------------------------------------------------------------------|
+| Clock contract                                          | `Shared/Application/Clock.php`                           | Business-independent source of time                                       |
+| Carbon clock                                            | `Shared/Infrastructure/Clock/CarbonClock.php`            | Implementation of the shared clock contract                               |
+| Earning Line, Manual Adjustment                         | `Earning/Domain/Entity/`                                 | Both have identity; Earning Line is the aggregate root                    |
+| Line, adjustment and author IDs                         | `Earning/Domain/Value/`                                  | Immutable, module-specific Value Objects                                  |
+| Domain events                                           | `Earning/Domain/Event/`                                  | Facts belonging to the Earning module                                     |
+| Earning Line Repository                                 | `Earning/Domain/Repository/EarningLineRepository.php`    | Interface for loading and saving an aggregate                             |
+| Command handlers                                        | `Earning/Application/Command/Handler/`                   | Use-case orchestration                                                    |
+| History query and handler                               | `Earning/Application/Query/` and `Query/Handler/`        | Read use case                                                             |
+| Adjustment History                                      | `Earning/Application/Query/Result/AdjustmentHistory.php` | Read DTO, not a domain entity                                             |
+| Event Store contract                                    | `Earning/Application/Port/EventStore.php`                | Technical persistence port typed to this module's IDs and events          |
+| Event serializer                                        | `Earning/Infrastructure/Mapper/EventSerializer.php`      | Maps domain events to versioned JSON and back                             |
+| Event-sourced repository, SQLite Event Store and schema | `Earning/Infrastructure/Persist/Write/`                  | Persistence of the authoritative aggregate event stream                   |
+| Demo command                                            | `Earning/UI/Cli/DemoCommand.php`                         | CLI arguments, scenario execution through handlers, and formatted history |
 
 ### CQRS and Persistence Folders
 
@@ -104,6 +104,17 @@ For this PoC, the history query also reads through the domain repository and bui
 
 ### Tests and Compatibility
 
-Tests mirror the module and relevant layer beneath `tests/Earning/`, including CLI acceptance tests in `UI/`. Shared tests belong under `tests/Shared/` when a shared component has behavior requiring its own tests.
+Tests are organized by test category first, then by module and layer. Each category has its own PHPUnit suite:
+
+| Category    | Location                                                  | Boundary tested                                                                            |
+|-------------|-----------------------------------------------------------|--------------------------------------------------------------------------------------------|
+| Unit        | `tests/Unit/Earning/Domain/Entity/`                       | Domain rules and event replay in memory, without database, filesystem or subprocess access |
+| Integration | `tests/Integration/Earning/Application/`                  | Command/query handlers working together with the real SQLite repository                    |
+| Integration | `tests/Integration/Earning/Infrastructure/Persist/Write/` | Serialization, SQLite persistence, transactions, concurrency and append-only guards        |
+| Acceptance  | `tests/Acceptance/Earning/UI/`                            | The complete CLI scenario and persisted history retrieval through separate processes       |
+
+Use `make test-unit`, `make test-integration`, or `make test-acceptance` to run an individual category. `make test` runs all three. Local Composer equivalents are `composer test:unit`, `composer test:integration`, and `composer test:acceptance`.
+
+Classify tests by the boundary they exercise, rather than the layer of the class under test. The application workflow is an Integration test because it uses actual persistence; the CLI test is Acceptance because it observes the executable's behavior from outside the application. Shared tests follow the same convention under `tests/<Category>/Shared/` when needed.
 
 This restructuring changes PHP namespaces and code placement. It does not change stable event names, JSON payloads, the SQLite schema, monetary behavior, or existing CLI commands. Previously persisted histories remain readable.
