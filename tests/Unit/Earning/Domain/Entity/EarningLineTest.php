@@ -7,9 +7,9 @@ namespace App\Tests\Unit\Earning\Domain\Entity;
 use App\Earning\Domain\Entity\EarningLine;
 use App\Earning\Domain\Entity\EarningLineAdjustment;
 use App\Earning\Domain\Value\AdjustmentAuthorId;
-use App\Earning\Domain\Value\EarningLineId;
 use App\Earning\Domain\Value\EarningLineAdjustmentId;
 use App\Earning\Domain\Value\EarningLineAdjustmentType;
+use App\Earning\Domain\Value\EarningLineId;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Money\Money;
@@ -48,7 +48,7 @@ final class EarningLineTest extends TestCase
         self::assertCount(7, $line->adjustments());
         self::assertSame($first, $line->adjustments()[2]);
         self::assertSame(['100000', '5000', '-4555', '10010', '-10', '-20', '20'], array_map(
-            static fn (EarningLineAdjustment $adjustment): string => $adjustment->amount->getAmount(),
+            static fn(EarningLineAdjustment $adjustment): string => $adjustment->amount->getAmount(),
             $line->adjustments(),
         ));
 
@@ -140,6 +140,7 @@ final class EarningLineTest extends TestCase
         self::assertSame('-1', $line->currentAmount()->getAmount());
     }
 
+    /** @param numeric-string $amount */
     #[DataProvider('invalidAdjustments')]
     public function testInvalidAdjustmentIsRejected(string $amount, string $comment): void
     {
@@ -147,6 +148,7 @@ final class EarningLineTest extends TestCase
         $this->adjustment($amount, $comment);
     }
 
+    /** @return iterable<string, array{numeric-string, string}> */
     public static function invalidAdjustments(): iterable
     {
         yield 'zero' => ['0', 'No change'];
@@ -175,7 +177,7 @@ final class EarningLineTest extends TestCase
         $line->updateSystemAmount(Money::USD('105000'), $this->now());
         $line->updateSystemAmount(Money::USD('99000'), $this->now());
         self::assertSame(['100000', '5000', '-6000'], array_map(
-            static fn (EarningLineAdjustment $adjustment): string => $adjustment->amount->getAmount(),
+            static fn(EarningLineAdjustment $adjustment): string => $adjustment->amount->getAmount(),
             $line->adjustments(),
         ));
         self::assertSame(EarningLineAdjustmentType::SYSTEM, $line->adjustments()[1]->type);
@@ -209,6 +211,7 @@ final class EarningLineTest extends TestCase
         return EarningLine::create(new EarningLineId(Uuid::uuid4()->toString()), Money::USD('100000'), $this->now());
     }
 
+    /** @param numeric-string $amount */
     private function adjustment(string $amount, string $comment = 'Correction'): EarningLineAdjustment
     {
         return new EarningLineAdjustment(

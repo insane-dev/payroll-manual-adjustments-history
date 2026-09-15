@@ -14,8 +14,8 @@ use App\Earning\Application\Query\GetAdjustmentHistory;
 use App\Earning\Application\Query\Handler\GetAdjustmentHistoryHandler;
 use App\Earning\Application\Query\Result\AdjustmentHistory;
 use App\Earning\Domain\Value\AdjustmentAuthorId;
-use App\Earning\Domain\Value\EarningLineId;
 use App\Earning\Domain\Value\EarningLineAdjustmentId;
+use App\Earning\Domain\Value\EarningLineId;
 use InvalidArgumentException;
 use Money\Currencies\ISOCurrencies;
 use Money\Formatter\DecimalMoneyFormatter;
@@ -30,8 +30,7 @@ final readonly class DemoCommand
         private UpdateSystemAmountHandler $updateSystemAmount,
         private AddManualAdjustmentHandler $addManualAdjustment,
         private GetAdjustmentHistoryHandler $getAdjustmentHistory,
-    ) {
-    }
+    ) {}
 
     /** @param list<string> $arguments */
     public function run(array $arguments): int
@@ -43,7 +42,7 @@ final readonly class DemoCommand
 
             $query = $this->getAdjustmentHistory;
             $formatter = new DecimalMoneyFormatter(new ISOCurrencies());
-            $format = static fn (Money $amount): string => $amount->getCurrency()->getCode() . ' ' . $formatter->format($amount);
+            $format = static fn(Money $amount): string => $amount->getCurrency()->getCode() . ' ' . $formatter->format($amount);
 
             $printHistory = static function (AdjustmentHistory $history) use ($format): void {
                 echo 'Earning Line: ' . $history->earningLineId->value . PHP_EOL;
@@ -59,7 +58,7 @@ final readonly class DemoCommand
                     };
                     printf("%s: %s%s\n", $label, !$adjustment->type->isInitial() && $adjustment->amount->isPositive() ? '+' : '', $format($adjustment->amount));
                     echo '  Id: ' . $adjustment->id->value . PHP_EOL;
-                    echo '  Author: ' . ($adjustment->authorId?->value ?? 'System') . PHP_EOL;
+                    echo '  Author: ' . ($adjustment->authorId === null ? 'System' : $adjustment->authorId->value) . PHP_EOL;
                     echo '  Recorded At: ' . $adjustment->recordedAt->format('Y-m-d\TH:i:s.uP') . PHP_EOL;
                     echo '  Comment: ' . ($adjustment->comment ?? ($adjustment->type->isInitial() ? 'Initial calculation' : 'Automatic recalculation')) . PHP_EOL;
                 }
@@ -81,25 +80,25 @@ final readonly class DemoCommand
             $step = static function (int $number, string $description) use ($query, $request, $format): void {
                 printf("Step %d: %s => %s\n", $number, $description, $format($query->handle($request)->currentAmount));
             };
-            $adjust = static function (string $amount, string $comment) use ($add, $id, $authorId): void {
-                $add->handle(new AddManualAdjustment($id, new EarningLineAdjustmentId(Uuid::uuid4()->toString()), Money::USD($amount), $comment, $authorId));
+            $adjust = static function (Money $amount, string $comment) use ($add, $id, $authorId): void {
+                $add->handle(new AddManualAdjustment($id, new EarningLineAdjustmentId(Uuid::uuid4()->toString()), $amount, $comment, $authorId));
             };
 
             $create->handle(new CreateEarningLine($id, Money::USD('100000')));
             $step(1, 'System calculation');
             $update->handle(new UpdateSystemAmount($id, Money::USD('105000')));
             $step(2, 'System update');
-            $adjust('-4555', 'Employee declined dental benefit; reversing deduction');
+            $adjust(Money::USD('-4555'), 'Employee declined dental benefit; reversing deduction');
             $step(3, 'First manual adjustment');
             $update->handle(new UpdateSystemAmount($id, Money::USD('200000')));
             $step(4, 'System update ignored');
-            $adjust('10010', 'Late correction: missed approved overtime bonus');
+            $adjust(Money::USD('10010'), 'Late correction: missed approved overtime bonus');
             $step(5, 'Second manual adjustment');
-            $adjust('-10', 'Minor rounding adjustment');
+            $adjust(Money::USD('-10'), 'Minor rounding adjustment');
             $step(6, 'Third manual adjustment');
-            $adjust('-20', 'Second minor rounding adjustment');
+            $adjust(Money::USD('-20'), 'Second minor rounding adjustment');
             $step(7, 'Fourth manual adjustment');
-            $adjust('20', 'Correcting mistake in adjustment #4');
+            $adjust(Money::USD('20'), 'Correcting mistake in adjustment #4');
             $step(8, 'Compensating adjustment');
 
             echo PHP_EOL;

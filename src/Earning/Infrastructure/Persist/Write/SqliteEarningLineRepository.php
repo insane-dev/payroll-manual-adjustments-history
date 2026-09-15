@@ -12,6 +12,7 @@ use App\Earning\Domain\Value\EarningLineId;
 use App\Earning\Infrastructure\Mapper\EarningLineMapper;
 use PDO;
 use PDOStatement;
+use RuntimeException;
 use Throwable;
 
 final readonly class SqliteEarningLineRepository implements EarningLineRepository
@@ -21,9 +22,14 @@ final readonly class SqliteEarningLineRepository implements EarningLineRepositor
         $connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $connection->exec('PRAGMA foreign_keys = ON');
         $connection->exec('PRAGMA busy_timeout = 5000');
-        $connection->exec(file_get_contents(__DIR__ . '/schema.sql'));
+        $schema = file_get_contents(__DIR__ . '/schema.sql');
+        if ($schema === false) {
+            throw new RuntimeException('Cannot read the SQLite schema.');
+        }
+        $connection->exec($schema);
     }
 
+    /** @phpstan-impure */
     public function get(EarningLineId $id): EarningLine
     {
         // A read transaction keeps the state and its history on the same database snapshot.
@@ -36,7 +42,7 @@ final readonly class SqliteEarningLineRepository implements EarningLineRepositor
                 throw new EarningLineNotFound('Earning Line not found: ' . $id->value);
             }
             $query = $this->execute('SELECT * FROM earning_line_adjustments WHERE earning_line_id = :id ORDER BY sequence', ['id' => $this->mapper->binaryId($id->value)]);
-            $rows = $query->fetchAll(PDO::FETCH_ASSOC);
+            $rows = array_values($query->fetchAll(PDO::FETCH_ASSOC));
             $this->connection->commit();
         } catch (Throwable $exception) {
             $this->connection->rollBack();

@@ -13,8 +13,8 @@ use App\Earning\Application\Command\UpdateSystemAmount;
 use App\Earning\Application\Query\GetAdjustmentHistory;
 use App\Earning\Application\Query\Handler\GetAdjustmentHistoryHandler;
 use App\Earning\Domain\Value\AdjustmentAuthorId;
-use App\Earning\Domain\Value\EarningLineId;
 use App\Earning\Domain\Value\EarningLineAdjustmentId;
+use App\Earning\Domain\Value\EarningLineId;
 use App\Earning\Infrastructure\Persist\Write\SqliteEarningLineRepository;
 use App\Shared\Application\Clock;
 use Carbon\CarbonImmutable;
@@ -56,7 +56,8 @@ final class EarningLineWorkflowTest extends TestCase
 
         $update->handle(new UpdateSystemAmount($id, Money::USD('999999')));
         self::assertSame('100445', $query->handle($request)->currentAmount->getAmount());
-        self::assertCount(3, $repository->get($id)->adjustments());
+        $afterIgnoredUpdate = $repository->get($id);
+        self::assertCount(3, $afterIgnoredUpdate->adjustments());
 
         foreach ([
             ['10010', 'Late correction: missed approved overtime bonus', '110455'],
@@ -71,8 +72,10 @@ final class EarningLineWorkflowTest extends TestCase
         $history = $query->handle($request);
         self::assertSame('105000', $history->systemAmount->getAmount());
         self::assertCount(7, $history->adjustments);
-        self::assertCount(7, $repository->get($id)->adjustments());
+        $savedLine = $repository->get($id);
+        self::assertCount(7, $savedLine->adjustments());
         self::assertSame($firstId->value, $history->adjustments[2]->id->value);
+        self::assertNotNull($history->adjustments[2]->authorId);
         self::assertSame($authorId->value, $history->adjustments[2]->authorId->value);
         self::assertSame('Employee declined dental benefit; reversing deduction', $history->adjustments[2]->comment);
         self::assertSame('2026-09-15T12:00:00.123456+00:00', $history->adjustments[2]->recordedAt->format('Y-m-d\TH:i:s.uP'));
@@ -85,7 +88,8 @@ final class EarningLineWorkflowTest extends TestCase
             self::fail('The same adjustment command was applied twice.');
         } catch (DomainException) {
             self::assertSame('110445', $query->handle($request)->currentAmount->getAmount());
-            self::assertCount(7, $repository->get($id)->adjustments());
+            $afterDuplicateAttempt = $repository->get($id);
+            self::assertCount(7, $afterDuplicateAttempt->adjustments());
         }
     }
 }

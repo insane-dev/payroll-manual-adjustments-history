@@ -16,7 +16,7 @@ make check
 make demo
 ```
 
-`make setup` builds PHP 8.4 and installs locked dependencies. `make check` validates Composer configuration, checks PHP syntax, and runs all test suites.
+`make setup` builds PHP 8.4 and installs locked dependencies. `make check` validates Composer configuration, checks PHP syntax, runs PHPStan and PHP-CS-Fixer, and runs all test suites.
 
 Each demo creates a new line in `var/payroll-no-es-compact.sqlite`. Previous histories remain available. Copy the printed line UUID to read it in another process:
 
@@ -118,6 +118,21 @@ The state-based design directly meets the business case with fewer ES-specific c
 | Acceptance | CLI scenario and history read in separate processes | `make test-acceptance` | `composer test:acceptance` |
 
 `make test` runs all suites. Tests cover all eight steps, positive and negative System deltas, permanent precedence after net-zero compensation and reload, money precision, mandatory manual metadata, duplicate IDs, fixed currency, both race orders, initial-entry creation (including zero), rollback of line creation if the Initial insert fails, full rollback/retry, repository history preservation, compact storage types, signed 64-bit boundaries, overflow rollback, microsecond timestamp round-trips and durable CLI history.
+
+## CI and Code Quality
+
+GitHub Actions runs on every push and pull request, with a manual trigger available. Three independent PHP 8.4 jobs run PHPStan, PHP-CS-Fixer in dry-run mode, and PHPUnit (Unit, Integration and Acceptance). Each job installs dependencies from `composer.lock`; Composer downloads are cached.
+
+PHPStan uses level 8 for `src`, `bin` and `tests`, with the PHPUnit extension and no baseline. PHP-CS-Fixer applies PSR-12, PER Coding Style 2.0, strict types and sorted imports; its configuration also covers itself. PER Coding Style rules take precedence where the sets overlap.
+
+| Check | Docker | Local |
+| --- | --- | --- |
+| Static analysis | `make analyse` | `composer analyse` |
+| Style check | `make cs-check` | `composer cs-check` |
+| Apply style fixes | `make cs-fix` | `composer cs-fix` |
+| All checks | `make check` | `composer validate --strict` then `composer check` |
+
+The workflow is in `.github/workflows/ci.yml` and activates when pushed to GitHub.
 
 ## Assumptions
 

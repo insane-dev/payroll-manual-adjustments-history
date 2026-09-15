@@ -11,9 +11,7 @@ use App\Shared\Application\Clock;
 
 final readonly class CreateEarningLineHandler
 {
-    public function __construct(private EarningLineRepository $repository, private Clock $clock)
-    {
-    }
+    public function __construct(private EarningLineRepository $repository, private Clock $clock) {}
 
     public function handle(CreateEarningLine $command): void
     {

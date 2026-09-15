@@ -10,10 +10,9 @@ use App\Earning\Domain\Repository\EarningLineRepository;
 
 final readonly class GetAdjustmentHistoryHandler
 {
-    public function __construct(private EarningLineRepository $repository)
-    {
-    }
+    public function __construct(private EarningLineRepository $repository) {}
 
+    /** @phpstan-impure */
     public function handle(GetAdjustmentHistory $query): AdjustmentHistory
     {
         $line = $this->repository->get($query->earningLineId);

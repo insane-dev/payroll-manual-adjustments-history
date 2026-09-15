@@ -18,6 +18,5 @@ final readonly class AdjustmentHistory
         public Money $currentAmount,
         public Money $initialAmount,
         public bool $manuallyAdjusted,
-    ) {
-    }
+    ) {}
 }

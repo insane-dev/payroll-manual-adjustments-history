@@ -28,8 +28,7 @@ final class EarningLine
         private bool $manuallyAdjusted,
         private int $version,
         private CarbonImmutable $createdAt,
-    ) {
-    }
+    ) {}
 
     public static function create(EarningLineId $id, Money $systemAmount, CarbonImmutable $recordedAt): self
     {

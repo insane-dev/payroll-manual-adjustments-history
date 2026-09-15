@@ -9,7 +9,5 @@ use Money\Money;
 
 final readonly class CreateEarningLine
 {
-    public function __construct(public EarningLineId $earningLineId, public Money $systemAmount)
-    {
-    }
+    public function __construct(public EarningLineId $earningLineId, public Money $systemAmount) {}
 }

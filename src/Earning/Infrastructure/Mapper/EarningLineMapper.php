@@ -59,11 +59,14 @@ final class EarningLineMapper
         ];
     }
 
-    /** @param array<string, mixed> $state @param list<array<string, mixed>> $rows */
+    /**
+     * @param array<string, mixed> $state
+     * @param list<array<string, mixed>> $rows
+     */
     public function restore(array $state, array $rows): EarningLine
     {
         $currency = new Currency($state['currency']);
-        $adjustments = array_map(fn (array $row): EarningLineAdjustment => new EarningLineAdjustment(
+        $adjustments = array_map(fn(array $row): EarningLineAdjustment => new EarningLineAdjustment(
             new EarningLineAdjustmentId(Uuid::fromBytes($row['id'])->toString()),
             new Money($row['amount'], $currency),
             $row['comment'],
@@ -93,6 +96,9 @@ final class EarningLineMapper
     {
         if (PHP_INT_SIZE !== 8) {
             throw new LogicException('SQLite integer mapping requires 64-bit PHP.');
+        }
+        if (!is_numeric($value)) {
+            throw new UnexpectedValueException('Expected a numeric storage value.');
         }
         if (bccomp($value, '-9223372036854775808', 0) < 0 || bccomp($value, '9223372036854775807', 0) > 0) {
             throw new OverflowException('Value exceeds the signed 64-bit storage range: ' . $value);

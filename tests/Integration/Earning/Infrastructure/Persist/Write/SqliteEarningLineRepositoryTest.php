@@ -10,17 +10,19 @@ use App\Earning\Domain\Entity\EarningLine;
 use App\Earning\Domain\Entity\EarningLineAdjustment;
 use App\Earning\Domain\Repository\EarningLineRepository;
 use App\Earning\Domain\Value\AdjustmentAuthorId;
-use App\Earning\Domain\Value\EarningLineId;
 use App\Earning\Domain\Value\EarningLineAdjustmentId;
+use App\Earning\Domain\Value\EarningLineId;
 use App\Earning\Infrastructure\Persist\Write\SqliteEarningLineRepository;
 use Carbon\CarbonImmutable;
-use PDO;
-use PDOException;
 use Money\Money;
 use OverflowException;
+use PDO;
+use PDOException;
+use PDOStatement;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Ramsey\Uuid\Uuid;
+use RuntimeException;
 
 final class SqliteEarningLineRepositoryTest extends TestCase
 {
@@ -99,6 +101,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
         self::assertSame($adjustmentWins ? '95445' : '100445', $this->repository->get($line->id())->currentAmount()->getAmount());
     }
 
+    /** @return iterable<string, array{bool}> */
     public static function racingWrites(): iterable
     {
         yield 'manual adjustment wins' => [true];
@@ -133,11 +136,11 @@ final class SqliteEarningLineRepositoryTest extends TestCase
         $line = $this->line();
         $line->addManualAdjustment($this->adjustment('10'));
         $this->repository->save($line);
-        $before = $this->connection->query('SELECT * FROM earning_line_adjustments ORDER BY sequence')->fetchAll(PDO::FETCH_ASSOC);
+        $before = $this->query('SELECT * FROM earning_line_adjustments ORDER BY sequence')->fetchAll(PDO::FETCH_ASSOC);
         $line = $this->repository->get($line->id());
         $line->addManualAdjustment($this->adjustment('-10'));
         $this->repository->save($line);
-        $after = $this->connection->query('SELECT * FROM earning_line_adjustments ORDER BY sequence')->fetchAll(PDO::FETCH_ASSOC);
+        $after = $this->query('SELECT * FROM earning_line_adjustments ORDER BY sequence')->fetchAll(PDO::FETCH_ASSOC);
         self::assertSame($before, array_slice($after, 0, 2));
         self::assertCount(3, $after);
         self::assertSame('100000', $this->repository->get($line->id())->currentAmount()->getAmount());
@@ -202,7 +205,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
             $this->repository->save($line);
             self::fail('Initial insert should fail.');
         } catch (PDOException) {
-            self::assertSame(0, (int) $this->connection->query('SELECT COUNT(*) FROM earning_lines')->fetchColumn());
+            self::assertSame(0, (int) $this->query('SELECT COUNT(*) FROM earning_lines')->fetchColumn());
             self::assertCount(1, $line->pendingAdjustments());
             self::assertSame(0, $line->persistedVersion());
         }
@@ -220,21 +223,22 @@ final class SqliteEarningLineRepositoryTest extends TestCase
         $line->updateSystemAmount(Money::USD('105000'), $this->now());
         $line->addManualAdjustment($this->adjustment('-4555'));
         $this->repository->save($line);
-        $state = $this->connection->query('SELECT typeof(id) AS id_type, length(id) AS id_bytes, typeof(current_amount) AS amount_type, current_amount, typeof(created_at) AS time_type FROM earning_lines')->fetch(PDO::FETCH_ASSOC);
+        $state = $this->query('SELECT typeof(id) AS id_type, length(id) AS id_bytes, typeof(current_amount) AS amount_type, current_amount, typeof(created_at) AS time_type FROM earning_lines')->fetch(PDO::FETCH_ASSOC);
         self::assertSame('blob', $state['id_type']);
         self::assertSame(16, $state['id_bytes']);
         self::assertSame('integer', $state['amount_type']);
         self::assertSame(100445, $state['current_amount']);
         self::assertSame('integer', $state['time_type']);
-        $rows = $this->connection->query('SELECT type, amount, typeof(earning_line_id) AS line_id_type, length(author_id) AS author_bytes, typeof(recorded_at) AS time_type FROM earning_line_adjustments ORDER BY sequence')->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $this->query('SELECT type, amount, typeof(earning_line_id) AS line_id_type, length(author_id) AS author_bytes, typeof(recorded_at) AS time_type FROM earning_line_adjustments ORDER BY sequence')->fetchAll(PDO::FETCH_ASSOC);
         self::assertSame([0, 1, 2], array_column($rows, 'type'));
         self::assertSame([100000, 5000, -4555], array_column($rows, 'amount'));
         self::assertSame('blob', $rows[2]['line_id_type']);
         self::assertSame(16, $rows[2]['author_bytes']);
         self::assertSame('integer', $rows[2]['time_type']);
-        self::assertSame(0, (int) $this->connection->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger'")->fetchColumn());
+        self::assertSame(0, (int) $this->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger'")->fetchColumn());
     }
 
+    /** @param numeric-string $amount */
     #[DataProvider('integerBoundaries')]
     public function testSignedIntegerBoundariesRoundTripExactly(string $amount): void
     {
@@ -245,6 +249,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
         self::assertSame($amount, $restored->adjustments()[0]->amount->getAmount());
     }
 
+    /** @return iterable<string, array{numeric-string}> */
     public static function integerBoundaries(): iterable
     {
         yield 'minimum' => ['-9223372036854775808'];
@@ -252,6 +257,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
         yield 'zero' => ['0'];
     }
 
+    /** @param numeric-string $amount */
     #[DataProvider('outsideIntegerRange')]
     public function testOutOfRangeAmountsAreRejectedWithoutSavingAnything(string $amount): void
     {
@@ -260,12 +266,13 @@ final class SqliteEarningLineRepositoryTest extends TestCase
             $this->repository->save($line);
             self::fail('An out-of-range amount was saved.');
         } catch (OverflowException) {
-            self::assertSame(0, (int) $this->connection->query('SELECT COUNT(*) FROM earning_lines')->fetchColumn());
-            self::assertSame(0, (int) $this->connection->query('SELECT COUNT(*) FROM earning_line_adjustments')->fetchColumn());
+            self::assertSame(0, (int) $this->query('SELECT COUNT(*) FROM earning_lines')->fetchColumn());
+            self::assertSame(0, (int) $this->query('SELECT COUNT(*) FROM earning_line_adjustments')->fetchColumn());
             self::assertCount(1, $line->pendingAdjustments());
         }
     }
 
+    /** @return iterable<string, array{numeric-string}> */
     public static function outsideIntegerRange(): iterable
     {
         yield 'above maximum' => ['9223372036854775808'];
@@ -303,6 +310,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
         return EarningLine::create(new EarningLineId(Uuid::uuid4()->toString()), Money::USD('100000'), $this->now());
     }
 
+    /** @param numeric-string $amount */
     private function adjustment(string $amount): EarningLineAdjustment
     {
         return new EarningLineAdjustment(
@@ -312,6 +320,16 @@ final class SqliteEarningLineRepositoryTest extends TestCase
             new AdjustmentAuthorId(Uuid::uuid4()->toString()),
             $this->now(),
         );
+    }
+
+    private function query(string $sql): PDOStatement
+    {
+        $statement = $this->connection->query($sql);
+        if ($statement === false) {
+            throw new RuntimeException('Cannot execute test query.');
+        }
+
+        return $statement;
     }
 
     private function now(): CarbonImmutable

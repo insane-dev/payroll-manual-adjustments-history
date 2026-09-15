@@ -6,6 +6,4 @@ namespace App\Earning\Application\Exception;
 
 use RuntimeException;
 
-final class EarningLineNotFound extends RuntimeException
-{
-}
+final class EarningLineNotFound extends RuntimeException {}

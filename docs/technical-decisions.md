@@ -140,3 +140,12 @@ Use `make test-unit`, `make test-integration`, or `make test-acceptance` to run 
 Classify tests by the boundary they exercise, rather than the layer of the class under test. The application workflow is an Integration test because it uses actual persistence; the CLI test is Acceptance because it observes the executable's behavior from outside the application. Shared tests follow the same convention under `tests/<Category>/Shared/` when needed.
 
 The CLI commands and assignment's expected sums remain the same. This branch changes both storage schema and history semantics: Initial and System Adjustments are explicit audit entries. Use the separate default database or explicitly supply a new path when switching branches.
+
+
+## Continuous Integration and Code Quality
+
+GitHub Actions checks every push and pull request on PHP 8.4, matching the Docker runtime and Composer platform. A three-job matrix runs PHPStan, PHP-CS-Fixer and all PHPUnit suites independently so a failure in one check does not hide another result. Jobs have read-only repository permissions, a ten-minute timeout and cancellation of superseded runs. Dependencies are installed from the lockfile, with Composer download caching.
+
+PHPStan level 8 covers application code, the CLI composition root and tests. Its PHPUnit extension understands assertions and test contracts. There is no baseline or ignored-error list. PHPDoc refines types that PHP cannot express directly, such as numeric strings, ordered lists and data-provider tuples. Repository reads are marked impure because committed database state can change between calls.
+
+PHP-CS-Fixer enables PSR-12 followed by PER Coding Style 2.0, with PER rules taking precedence where the sets overlap. It also requires strict type declarations, unused-import removal and alphabetical imports. CI uses dry-run mode; developers apply changes explicitly with `make cs-fix` or `composer cs-fix`. Tool versions are locked as development dependencies so local and CI checks use the same releases. `make check` includes both tools alongside syntax, Composer validation and tests.

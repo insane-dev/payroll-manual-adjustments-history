@@ -9,6 +9,7 @@ use App\Earning\Domain\Value\EarningLineId;
 
 interface EarningLineRepository
 {
+    /** @phpstan-impure */
     public function get(EarningLineId $id): EarningLine;
 
     public function save(EarningLine $line): void;

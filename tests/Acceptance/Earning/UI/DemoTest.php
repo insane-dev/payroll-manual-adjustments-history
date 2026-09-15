@@ -6,6 +6,7 @@ namespace App\Tests\Acceptance\Earning\UI;
 
 use PDO;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 final class DemoTest extends TestCase
 {
@@ -31,7 +32,11 @@ final class DemoTest extends TestCase
             self::assertSame(7, substr_count($history, 'Recorded At:'));
 
             $connection = new PDO('sqlite:' . $database);
-            self::assertSame(7, (int) $connection->query('SELECT COUNT(*) FROM earning_line_adjustments')->fetchColumn());
+            $query = $connection->query('SELECT COUNT(*) FROM earning_line_adjustments');
+            if ($query === false) {
+                throw new RuntimeException('Cannot query adjustment history.');
+            }
+            self::assertSame(7, (int) $query->fetchColumn());
             unset($connection);
         } finally {
             unlink($database);
@@ -42,11 +47,14 @@ final class DemoTest extends TestCase
     private function runCli(string $database, string ...$arguments): array
     {
         $process = proc_open(
-            [PHP_BINARY, __DIR__ . '/../../../../bin/demo.php', ...$arguments],
+            [PHP_BINARY, __DIR__ . '/../../../../bin/demo.php', ...array_values($arguments)],
             [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             env_vars: ['PAYROLL_DATABASE' => $database],
         );
+        if ($process === false) {
+            throw new RuntimeException('Cannot start the CLI process.');
+        }
         fclose($pipes[0]);
         $output = stream_get_contents($pipes[1]);
         $errors = stream_get_contents($pipes[2]);
