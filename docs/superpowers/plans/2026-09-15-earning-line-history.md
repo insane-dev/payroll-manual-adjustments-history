@@ -35,11 +35,11 @@
 
 **Interfaces:** `EarningLine::create(EarningLineId, Money, CarbonImmutable): self`; `updateSystemAmount(Money, CarbonImmutable): void`; `addManualAdjustment(ManualAdjustment): void`; `reconstitute(array): self`; `recordedEvents(): array`; `markEventsCommitted(): void`; read methods for id, version, System Amount, Current Amount, and adjustments.
 
-- [ ] Add Composer configuration and the PHP 8.4 container with bcmath and pdo_sqlite.
-- [ ] Write the scenario test with literal expected minor-unit values: 100000, 105000, 100445, 100445, 110455, 110445, 110425, 110445. Run it and observe missing domain behavior.
-- [ ] Implement the three typed UUID identifiers, immutable ManualAdjustment and events, and EarningLine.
-- [ ] Add focused tests for compensation retaining the freeze, blank/zero adjustments, currency mismatch, duplicate adjustment identifiers, and reconstitution preserving history without new events. Observe failures before implementing each missing rule.
-- [ ] Run the domain test suite and commit `feat: model earning lines with immutable manual adjustments`.
+- [x] Add Composer configuration and the PHP 8.4 container with bcmath and pdo_sqlite.
+- [x] Write the scenario test with literal expected minor-unit values: 100000, 105000, 100445, 100445, 110455, 110445, 110425, 110445. Run it and observe missing domain behavior.
+- [x] Implement the three typed UUID identifiers, immutable ManualAdjustment and events, and EarningLine.
+- [x] Add focused tests for compensation retaining the freeze, blank/zero adjustments, currency mismatch, duplicate adjustment identifiers, and reconstitution preserving history without new events. Observe failures before implementing each missing rule.
+- [x] Run the domain test suite and commit `feat: model earning lines with immutable manual adjustments`.
 
 Example contract:
 
@@ -54,12 +54,12 @@ self::assertSame('100445', $line->currentAmount()->getAmount());
 
 **Interfaces:** `EventStore::load(EarningLineId): array`; `append(EarningLineId, int $expectedVersion, array $events): void`; `EarningLineRepository::get(EarningLineId): EarningLine`; `save(EarningLine): void`.
 
-- [ ] Write SQLite tests for cross-connection persistence, two readers racing to save, rollback of a partially inserted batch, and direct UPDATE/DELETE rejection. Run to observe missing storage behavior.
-- [ ] Implement an explicit JSON serializer with stable versioned event names and minor-unit strings.
-- [ ] Add a schema with `(stream_id, version)` primary key and UPDATE/DELETE rejection triggers.
-- [ ] Append within BEGIN IMMEDIATE, verify expected version under the write lock, and roll back the entire batch on failure. Convert only version conflicts into a dedicated application exception.
-- [ ] Clear pending events only after a successful append. Preserve them when persistence fails.
-- [ ] Run storage and domain tests and commit `feat: persist earning line events atomically in sqlite`.
+- [x] Write SQLite tests for cross-connection persistence, two readers racing to save, rollback of a partially inserted batch, and direct UPDATE/DELETE rejection. Run to observe missing storage behavior.
+- [x] Implement an explicit JSON serializer with stable versioned event names and minor-unit strings.
+- [x] Add a schema with `(stream_id, version)` primary key and UPDATE/DELETE rejection triggers.
+- [x] Append within BEGIN IMMEDIATE, verify expected version under the write lock, and roll back the entire batch on failure. Convert only version conflicts into a dedicated application exception.
+- [x] Clear pending events only after a successful append. Preserve them when persistence fails.
+- [x] Run storage and domain tests and commit `feat: persist earning line events atomically in sqlite`.
 
 Concurrency contract:
 
@@ -77,17 +77,26 @@ $repository->save($stale);
 
 **Interfaces:** typed immutable CreateEarningLine, UpdateSystemAmount, AddManualAdjustment, GetAdjustmentHistory messages; one `handle()` method per handler; `Clock::now(): CarbonImmutable`; AdjustmentHistory contains id, System Amount, immutable adjustments, Current Amount.
 
-- [ ] Write an application test that executes the complete scenario through real handlers and a SQLite repository. Assert a reloaded Adjustment History has five adjustments and Current Amount `110445`.
-- [ ] Implement handlers using constructor injection; generate timestamps through Clock. Callers provide identifiers to make duplicate attempts detectable.
-- [ ] Implement the synchronous history query, preserving record order and author/comment/time metadata.
-- [ ] Add a CLI composition root and demo printing all eight steps and the final history. Give every run a new Earning Line Id in the same persistent database.
-- [ ] Run application tests and the CLI demo and commit `feat: expose earning line commands and audit history query`.
+- [x] Write an application test that executes the complete scenario through real handlers and a SQLite repository. Assert a reloaded Adjustment History has five adjustments and Current Amount `110445`.
+- [x] Implement handlers using constructor injection; generate timestamps through Clock. Callers provide identifiers to make duplicate attempts detectable.
+- [x] Implement the synchronous history query, preserving record order and author/comment/time metadata.
+- [x] Add a CLI composition root and demo printing all eight steps and the final history. Give every run a new Earning Line Id in the same persistent database.
+- [x] Run application tests and the CLI demo and commit `feat: expose earning line commands and audit history query`.
 
 ## Task 4: Delivery and Verification
 
-- [ ] Document Makefile commands, local Composer alternatives, architecture, and the exact example output in README.
-- [ ] State assumptions: nonzero adjustments, fixed currency per line, negative totals allowed, author identity supplied by caller, immutable saved records protected through API and SQLite triggers, privileged DB owners can still change the database.
-- [ ] Explain synchronous replay, explicit conflict handling, duplicate adjustment rejection rather than transparent idempotency, and no UI/authentication/external salary calculation.
-- [ ] Run `docker compose run --rm php composer validate --strict`, `make test`, `make demo`, PHP syntax checks, and `git diff --check`.
-- [ ] Review invariant enforcement, transaction boundaries, event serialization, and documentation; fix concrete findings with regression tests.
-- [ ] Commit `docs: explain payroll history usage and design trade-offs` and report verification results. Publishing requires a configured GitHub destination; the repository currently has no remote.
+- [x] Document Makefile commands, local Composer alternatives, architecture, and the exact example output in README.
+- [x] State assumptions: nonzero adjustments, fixed currency per line, negative totals allowed, author identity supplied by caller, immutable saved records protected through API and SQLite triggers, privileged DB owners can still change the database.
+- [x] Explain synchronous replay, explicit conflict handling, duplicate adjustment rejection rather than transparent idempotency, and no UI/authentication/external salary calculation.
+- [x] Run `docker compose run --rm php composer validate --strict`, `make test`, `make demo`, PHP syntax checks, and `git diff --check`.
+- [x] Review invariant enforcement, transaction boundaries, event serialization, and documentation; fix concrete findings with regression tests.
+- [ ] Commit documentation and report verification results. Publishing requires a configured GitHub destination; the repository currently has no remote.
+
+## Verification Results
+
+- Docker build completed successfully; runtime PHP 8.4.25.
+- `make check`: Composer validation, all PHP syntax checks, and 27 PHPUnit tests / 103 assertions passed.
+- `composer install` verified the lock file on PHP 8.4.
+- CLI produced the expected USD 1104.45 result; acceptance tests read the persisted history in a separate process.
+- Independent read-only review found no actionable correctness issues.
+- GitHub publication is pending the destination repository.
