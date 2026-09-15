@@ -123,7 +123,7 @@ The state-based design directly meets the business case with fewer ES-specific c
 
 GitHub Actions runs on every push and pull request, with a manual trigger available. Three independent PHP 8.4 jobs run PHPStan, PHP-CS-Fixer in dry-run mode, and PHPUnit (Unit, Integration and Acceptance). Each job installs dependencies from `composer.lock`; Composer downloads are cached.
 
-PHPStan uses level 8 for `src`, `bin` and `tests`, with the PHPUnit extension and no baseline. PHP-CS-Fixer applies PSR-12, PER Coding Style 2.0, strict types and sorted imports; its configuration also covers itself. PER Coding Style rules take precedence where the sets overlap.
+PHPStan uses level 8 for `src`, `bin` and `tests`, with the PHPUnit extension and no baseline. PHP-CS-Fixer applies PSR-12, PER Coding Style 2.0, strict types and sorted imports; its configuration also covers itself. PER Coding Style rules take precedence where the sets overlap. Every promoted constructor property is placed on its own line, even in constructors with a single property.
 
 | Check | Docker | Local |
 | --- | --- | --- |

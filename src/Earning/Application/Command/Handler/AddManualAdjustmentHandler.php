@@ -11,11 +11,14 @@ use App\Shared\Application\Clock;
 
 final readonly class AddManualAdjustmentHandler
 {
-    public function __construct(private EarningLineRepository $repository, private Clock $clock) {}
+    public function __construct(
+        private EarningLineRepository $earningLines,
+        private Clock $clock,
+    ) {}
 
     public function handle(AddManualAdjustment $command): void
     {
-        $line = $this->repository->get($command->earningLineId);
+        $line = $this->earningLines->get($command->earningLineId);
         $line->addManualAdjustment(new EarningLineAdjustment(
             $command->adjustmentId,
             $command->amount,
@@ -23,6 +26,6 @@ final readonly class AddManualAdjustmentHandler
             $command->authorId,
             $this->clock->now(),
         ));
-        $this->repository->save($line);
+        $this->earningLines->save($line);
     }
 }

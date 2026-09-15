@@ -10,6 +10,7 @@ return (new Config())
         '@PSR12' => true,
         '@PER-CS2.0' => true,
         'declare_strict_types' => true,
+        'multiline_promoted_properties' => ['minimum_number_of_parameters' => 1],
         'no_unused_imports' => true,
         'ordered_imports' => ['sort_algorithm' => 'alpha'],
     ])

@@ -8,5 +8,7 @@ use App\Earning\Domain\Value\EarningLineId;
 
 final readonly class GetAdjustmentHistory
 {
-    public function __construct(public EarningLineId $earningLineId) {}
+    public function __construct(
+        public EarningLineId $earningLineId,
+    ) {}
 }

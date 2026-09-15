@@ -17,8 +17,10 @@ use Throwable;
 
 final readonly class SqliteEarningLineRepository implements EarningLineRepository
 {
-    public function __construct(private PDO $connection, private EarningLineMapper $mapper = new EarningLineMapper())
-    {
+    public function __construct(
+        private PDO $connection,
+        private EarningLineMapper $earningLineMapper = new EarningLineMapper(),
+    ) {
         $connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $connection->exec('PRAGMA foreign_keys = ON');
         $connection->exec('PRAGMA busy_timeout = 5000');
@@ -35,13 +37,13 @@ final readonly class SqliteEarningLineRepository implements EarningLineRepositor
         // A read transaction keeps the state and its history on the same database snapshot.
         $this->connection->beginTransaction();
         try {
-            $query = $this->execute('SELECT * FROM earning_lines WHERE id = :id', ['id' => $this->mapper->binaryId($id->value)]);
+            $query = $this->execute('SELECT * FROM earning_lines WHERE id = :id', ['id' => $this->earningLineMapper->binaryId($id->value)]);
             $state = $query->fetch(PDO::FETCH_ASSOC);
             $query->closeCursor();
             if ($state === false) {
                 throw new EarningLineNotFound('Earning Line not found: ' . $id->value);
             }
-            $query = $this->execute('SELECT * FROM earning_line_adjustments WHERE earning_line_id = :id ORDER BY sequence', ['id' => $this->mapper->binaryId($id->value)]);
+            $query = $this->execute('SELECT * FROM earning_line_adjustments WHERE earning_line_id = :id ORDER BY sequence', ['id' => $this->earningLineMapper->binaryId($id->value)]);
             $rows = array_values($query->fetchAll(PDO::FETCH_ASSOC));
             $this->connection->commit();
         } catch (Throwable $exception) {
@@ -49,7 +51,7 @@ final readonly class SqliteEarningLineRepository implements EarningLineRepositor
             throw $exception;
         }
 
-        return $this->mapper->restore($state, $rows);
+        return $this->earningLineMapper->restore($state, $rows);
     }
 
     public function save(EarningLine $line): void
@@ -59,13 +61,13 @@ final readonly class SqliteEarningLineRepository implements EarningLineRepositor
         }
         $this->connection->exec('BEGIN IMMEDIATE');
         try {
-            $query = $this->execute('SELECT version FROM earning_lines WHERE id = :id', ['id' => $this->mapper->binaryId($line->id()->value)]);
+            $query = $this->execute('SELECT version FROM earning_lines WHERE id = :id', ['id' => $this->earningLineMapper->binaryId($line->id()->value)]);
             $actualVersion = $query->fetchColumn();
             $query->closeCursor();
             if (($actualVersion === false ? 0 : $actualVersion) !== $line->persistedVersion()) {
                 throw new ConcurrentStreamWrite('Earning Line changed. Reload before retrying: ' . $line->id()->value);
             }
-            $state = $this->mapper->toStateRow($line);
+            $state = $this->earningLineMapper->toStateRow($line);
             if ($actualVersion === false) {
                 $this->execute('INSERT INTO earning_lines (id, initial_amount, system_amount, current_amount, currency, manually_adjusted, version, created_at) VALUES (:id, :initial_amount, :system_amount, :current_amount, :currency, :manually_adjusted, :version, :created_at)', $state);
             } else {
@@ -75,7 +77,7 @@ final readonly class SqliteEarningLineRepository implements EarningLineRepositor
             foreach ($line->pendingAdjustments() as $adjustment) {
                 $this->execute(
                     'INSERT INTO earning_line_adjustments (earning_line_id, id, sequence, type, amount, comment, author_id, recorded_at) VALUES (:line_id, :id, :sequence, :type, :amount, :comment, :author_id, :recorded_at)',
-                    $this->mapper->toAdjustmentRow($line->id(), ++$sequence, $adjustment),
+                    $this->earningLineMapper->toAdjustmentRow($line->id(), ++$sequence, $adjustment),
                 );
             }
             $this->connection->exec('COMMIT');

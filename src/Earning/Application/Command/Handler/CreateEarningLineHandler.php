@@ -11,11 +11,14 @@ use App\Shared\Application\Clock;
 
 final readonly class CreateEarningLineHandler
 {
-    public function __construct(private EarningLineRepository $repository, private Clock $clock) {}
+    public function __construct(
+        private EarningLineRepository $earningLines,
+        private Clock $clock,
+    ) {}
 
     public function handle(CreateEarningLine $command): void
     {
         $line = EarningLine::create($command->earningLineId, $command->systemAmount, $this->clock->now());
-        $this->repository->save($line);
+        $this->earningLines->save($line);
     }
 }

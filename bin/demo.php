@@ -20,13 +20,13 @@ try {
     }
 
     // Composition root: infrastructure is wired here, outside the UI command.
-    $repository = new SqliteEarningLineRepository(new PDO('sqlite:' . $database));
+    $earningLines = new SqliteEarningLineRepository(new PDO('sqlite:' . $database));
     $clock = new CarbonClock();
     $command = new DemoCommand(
-        new CreateEarningLineHandler($repository, $clock),
-        new UpdateSystemAmountHandler($repository, $clock),
-        new AddManualAdjustmentHandler($repository, $clock),
-        new GetAdjustmentHistoryHandler($repository),
+        new CreateEarningLineHandler($earningLines, $clock),
+        new UpdateSystemAmountHandler($earningLines, $clock),
+        new AddManualAdjustmentHandler($earningLines, $clock),
+        new GetAdjustmentHistoryHandler($earningLines),
     );
 
     exit($command->run(array_slice($argv, 1)));

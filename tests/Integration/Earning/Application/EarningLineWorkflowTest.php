@@ -28,17 +28,17 @@ final class EarningLineWorkflowTest extends TestCase
 {
     public function testTheAssignmentRunsThroughCommandsAndReturnsTheCompleteSavedHistory(): void
     {
-        $repository = new SqliteEarningLineRepository(new PDO('sqlite::memory:'));
+        $earningLines = new SqliteEarningLineRepository(new PDO('sqlite::memory:'));
         $clock = new class implements Clock {
             public function now(): CarbonImmutable
             {
                 return CarbonImmutable::parse('2026-09-15T12:00:00.123456Z');
             }
         };
-        $create = new CreateEarningLineHandler($repository, $clock);
-        $update = new UpdateSystemAmountHandler($repository, $clock);
-        $add = new AddManualAdjustmentHandler($repository, $clock);
-        $query = new GetAdjustmentHistoryHandler($repository);
+        $create = new CreateEarningLineHandler($earningLines, $clock);
+        $update = new UpdateSystemAmountHandler($earningLines, $clock);
+        $add = new AddManualAdjustmentHandler($earningLines, $clock);
+        $query = new GetAdjustmentHistoryHandler($earningLines);
         $id = new EarningLineId(Uuid::uuid4()->toString());
         $authorId = new AdjustmentAuthorId(Uuid::uuid4()->toString());
         $request = new GetAdjustmentHistory($id);
@@ -56,7 +56,7 @@ final class EarningLineWorkflowTest extends TestCase
 
         $update->handle(new UpdateSystemAmount($id, Money::USD('999999')));
         self::assertSame('100445', $query->handle($request)->currentAmount->getAmount());
-        $afterIgnoredUpdate = $repository->get($id);
+        $afterIgnoredUpdate = $earningLines->get($id);
         self::assertCount(3, $afterIgnoredUpdate->adjustments());
 
         foreach ([
@@ -72,7 +72,7 @@ final class EarningLineWorkflowTest extends TestCase
         $history = $query->handle($request);
         self::assertSame('105000', $history->systemAmount->getAmount());
         self::assertCount(7, $history->adjustments);
-        $savedLine = $repository->get($id);
+        $savedLine = $earningLines->get($id);
         self::assertCount(7, $savedLine->adjustments());
         self::assertSame($firstId->value, $history->adjustments[2]->id->value);
         self::assertNotNull($history->adjustments[2]->authorId);
@@ -88,7 +88,7 @@ final class EarningLineWorkflowTest extends TestCase
             self::fail('The same adjustment command was applied twice.');
         } catch (DomainException) {
             self::assertSame('110445', $query->handle($request)->currentAmount->getAmount());
-            $afterDuplicateAttempt = $repository->get($id);
+            $afterDuplicateAttempt = $earningLines->get($id);
             self::assertCount(7, $afterDuplicateAttempt->adjustments());
         }
     }
