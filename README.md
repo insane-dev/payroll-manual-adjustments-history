@@ -92,11 +92,16 @@ An ignored automatic update produces no event. Updating an unlocked line to the 
 
 | Location | Responsibility |
 | --- | --- |
-| `src/Domain` | Aggregate, typed identifiers, immutable adjustments and domain events |
-| `src/Application` | Commands, handlers, history query, repository, Clock and Event Store interfaces |
-| `src/Infrastructure` | SQLite persistence, explicit JSON serialization, Carbon clock |
-| `bin/demo.php` | CLI scenario and composition root with explicit constructor injection |
-| `tests` | Domain, application, persistence, and CLI acceptance tests |
+| `src/Earning/Domain` | Entities/aggregate, Value Objects, events, and repository interfaces |
+| `src/Earning/Application` | Commands/handlers, queries/handlers/results, ports, and application exceptions |
+| `src/Earning/Infrastructure/Mapper` | Explicit domain-event/JSON mapping |
+| `src/Earning/Infrastructure/Persist/Write` | Event-sourced repository implementation, SQLite Event Store, and schema |
+| `src/Earning/UI/Cli` | CLI scenario, input handling, and history output |
+| `src/Shared` | Business-independent Clock contract and Carbon implementation |
+| `bin/demo.php` | Configuration and composition root with explicit constructor injection |
+| `tests/Earning` | Tests organized by module and layer |
+
+See [Module and Layer Structure](docs/technical-decisions.md#module-and-layer-structure) for the full convention and dependency rules. Optional folders are added only when needed. `Persist/Read` will hold a dedicated read adapter if one is introduced; this PoC reads history through the aggregate repository.
 
 The repository loads the line's events and reconstitutes its state. Commands ask the aggregate to make a change, then append its pending events. Pending events are cleared only after a successful save. Reconstitution applies historical facts without generating new events.
 

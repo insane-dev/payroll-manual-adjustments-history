@@ -4,19 +4,19 @@ Use Title Case for domain terms in documentation and PascalCase for correspondin
 
 ## Domain Terms
 
-| Term | Code Type | Meaning |
-| --- | --- | --- |
-| Earning Line | `EarningLine` | A single earning line containing a System Amount and a history of Manual Adjustments. This is the aggregate boundary. |
-| Earning Line Id | `EarningLineId` | The stable identifier of an Earning Line. |
-| System Amount | `Money` | The most recent accepted result of an automatic calculation. It cannot change after the first Manual Adjustment. |
-| Manual Adjustment | `ManualAdjustment` | An immutable record of a manual change to an Earning Line's amount. |
-| Manual Adjustment Id | `ManualAdjustmentId` | The stable identifier of a Manual Adjustment, allowing it to be located unambiguously in the history. |
-| Adjustment Amount | `Money` | A signed amount added to the Earning Line's value, rather than a replacement value. |
-| Adjustment Comment | — | The mandatory, nonblank explanation for a Manual Adjustment. |
-| Adjustment Author Id | `AdjustmentAuthorId` | The identifier of the specialist who made a Manual Adjustment. |
-| Recorded At | — | The time a Manual Adjustment was recorded, expressed in UTC. |
-| Current Amount | `Money` | The System Amount plus the sum of all Adjustment Amounts. |
-| Adjustment History | `AdjustmentHistory` | A read representation containing the System Amount, every Manual Adjustment in recorded order, and the Current Amount. |
+| Term                 | Code Type            | Meaning                                                                                                                |
+|----------------------|----------------------|------------------------------------------------------------------------------------------------------------------------|
+| Earning Line         | `EarningLine`        | A single earning line containing a System Amount and a history of Manual Adjustments. This is the aggregate boundary.  |
+| Earning Line Id      | `EarningLineId`      | The stable identifier of an Earning Line.                                                                              |
+| System Amount        | `Money`              | The most recent accepted result of an automatic calculation. It cannot change after the first Manual Adjustment.       |
+| Manual Adjustment    | `ManualAdjustment`   | An immutable record of a manual change to an Earning Line's amount.                                                    |
+| Manual Adjustment Id | `ManualAdjustmentId` | The stable identifier of a Manual Adjustment, allowing it to be located unambiguously in the history.                  |
+| Adjustment Amount    | `Money`              | A signed amount added to the Earning Line's value, rather than a replacement value.                                    |
+| Adjustment Comment   | —                    | The mandatory, nonblank explanation for a Manual Adjustment.                                                           |
+| Adjustment Author Id | `AdjustmentAuthorId` | The identifier of the specialist who made a Manual Adjustment.                                                         |
+| Recorded At          | —                    | The time a Manual Adjustment was recorded, expressed in UTC.                                                           |
+| Current Amount       | `Money`              | The System Amount plus the sum of all Adjustment Amounts.                                                              |
+| Adjustment History   | `AdjustmentHistory`  | A read representation containing the System Amount, every Manual Adjustment in recorded order, and the Current Amount. |
 
 `Money` refers to the moneyphp monetary value type. The three amount terms describe distinct business roles of the same value type.
 
@@ -26,11 +26,11 @@ Base Salary is an example of what an Earning Line represents. The model's adjust
 
 Commands express intent. Events express accepted facts in the past tense.
 
-| Action | Command | Event |
-| --- | --- | --- |
-| Create an Earning Line with an initial System Amount | `CreateEarningLine` | `EarningLineCreated` |
-| Update the System Amount using a completed automatic calculation | `UpdateSystemAmount` | `SystemAmountUpdated` |
-| Add a Manual Adjustment | `AddManualAdjustment` | `ManualAdjustmentAdded` |
+| Action                                                           | Command               | Event                   |
+|------------------------------------------------------------------|-----------------------|-------------------------|
+| Create an Earning Line with an initial System Amount             | `CreateEarningLine`   | `EarningLineCreated`    |
+| Update the System Amount using a completed automatic calculation | `UpdateSystemAmount`  | `SystemAmountUpdated`   |
+| Add a Manual Adjustment                                          | `AddManualAdjustment` | `ManualAdjustmentAdded` |
 
 The Earning Line receives the result of an external calculation. It does not calculate salary from source data itself; this is why the command is named Update System Amount.
 
