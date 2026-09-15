@@ -6,4 +6,4 @@ namespace App\Earning\Application\Exception;
 
 use RuntimeException;
 
-final class ConcurrentStreamWrite extends RuntimeException {}
+final class ConcurrentEarningLineWrite extends RuntimeException {}

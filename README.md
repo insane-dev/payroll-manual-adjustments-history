@@ -101,7 +101,7 @@ History contains seven records: one Initial Adjustment of USD 1000.00, one Syste
 
 Both tables use `STRICT` type enforcement and `WITHOUT ROWID` to avoid an extra hidden row identifier.
 
-Saving uses one write transaction: check the persisted version under `BEGIN IMMEDIATE`, save state, insert pending adjustments, commit. On failure, both changes roll back and the aggregate retains pending adjustments. A concurrent stale writer receives `ConcurrentStreamWrite` and must reload before retrying. If a Manual Adjustment wins a race, a reloaded automatic update sees the freeze and is ignored.
+Saving uses one write transaction: check the persisted version under `BEGIN IMMEDIATE`, save state, insert pending adjustments, commit. On failure, both changes roll back and the aggregate retains pending adjustments. A concurrent stale writer receives `ConcurrentEarningLineWrite` and must reload before retrying. If a Manual Adjustment wins a race, a reloaded automatic update sees the freeze and is ignored.
 
 Reads load state and history inside one snapshot transaction. Domain state is restored directly from rows; no domain events are replayed. CQRS separates commands and queries while using the same repository and database.
 

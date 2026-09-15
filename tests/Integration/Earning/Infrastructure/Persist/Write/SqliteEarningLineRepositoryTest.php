@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Earning\Infrastructure\Persist\Write;
 
-use App\Earning\Application\Exception\ConcurrentStreamWrite;
+use App\Earning\Application\Exception\ConcurrentEarningLineWrite;
 use App\Earning\Application\Exception\EarningLineNotFound;
 use App\Earning\Domain\Entity\EarningLine;
 use App\Earning\Domain\Entity\EarningLineAdjustment;
@@ -85,7 +85,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
         try {
             $secondEarningLines->save($stale);
             self::fail('A stale writer was accepted.');
-        } catch (ConcurrentStreamWrite) {
+        } catch (ConcurrentEarningLineWrite) {
             self::assertCount(1, $stale->pendingAdjustments());
             self::assertSame(2, $this->earningLines->get($line->id())->version());
         }
@@ -151,7 +151,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
         $line = $this->line();
         $other = EarningLine::create($line->id(), Money::USD('5'), $this->now());
         $this->earningLines->save($line);
-        $this->expectException(ConcurrentStreamWrite::class);
+        $this->expectException(ConcurrentEarningLineWrite::class);
         $this->earningLines->save($other);
     }
 

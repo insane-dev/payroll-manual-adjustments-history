@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Earning\Infrastructure\Persist\Write;
 
-use App\Earning\Application\Exception\ConcurrentStreamWrite;
+use App\Earning\Application\Exception\ConcurrentEarningLineWrite;
 use App\Earning\Application\Exception\EarningLineNotFound;
 use App\Earning\Domain\Entity\EarningLine;
 use App\Earning\Domain\Repository\EarningLineRepository;
@@ -65,7 +65,7 @@ final readonly class SqliteEarningLineRepository implements EarningLineRepositor
             $actualVersion = $query->fetchColumn();
             $query->closeCursor();
             if (($actualVersion === false ? 0 : $actualVersion) !== $line->persistedVersion()) {
-                throw new ConcurrentStreamWrite('Earning Line changed. Reload before retrying: ' . $line->id()->value);
+                throw new ConcurrentEarningLineWrite('Earning Line changed. Reload before retrying: ' . $line->id()->value);
             }
             $state = $this->earningLineMapper->toStateRow($line);
             if ($actualVersion === false) {
