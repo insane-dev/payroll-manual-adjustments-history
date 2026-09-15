@@ -85,7 +85,7 @@ History contains seven records: one Initial Adjustment of USD 1000.00, one Syste
 | `src/Earning/Infrastructure/Mapper` | Mapping stored rows to domain state |
 | `src/Earning/Infrastructure/Persist/Write` | SQLite repository and schema |
 | `src/Earning/UI/Cli` | Scenario, arguments and formatted output |
-| `src/Shared` | Clock contract and Carbon implementation |
+| `src/Shared` | PSR-20-compatible Clock contract and Carbon implementation |
 | `bin/demo.php` | Configuration and dependency composition |
 
 `earning_lines` stores current state. `earning_line_adjustments` stores every amount-producing record in sequence order, starting with exactly one Initial entry at sequence 1. Initial Amount on the state row mirrors this first entry and is not added to the history sum a second time. MoneyPHP performs exact arithmetic in minor units. Persistence accepts signed 64-bit integers, from −9223372036854775808 to 9223372036854775807 minor units. The mapper rejects amounts or individual deltas outside this range before converting them to PHP integers; a failed save rolls back the entire transaction. Domain arithmetic can represent larger values, but they cannot be persisted.

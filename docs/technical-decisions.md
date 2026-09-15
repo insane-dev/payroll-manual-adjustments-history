@@ -41,6 +41,7 @@ The default database is `var/payroll-no-es-compact.sqlite`. Previous experiment 
 | PHP               | 64-bit 8.4+      | Application runtime                                                  |
 | Money             | `moneyphp/money` | Exact monetary values and arithmetic without floating-point amounts  |
 | Date and Time     | `nesbot/carbon`  | Date and time handling; use immutable values for recorded timestamps |
+| Clock Contract    | `psr/clock`      | PSR-20 interoperability for reading the current time                  |
 | Identifiers       | `ramsey/uuid`    | UUID generation and validation                                       |
 | Persistence       | SQLite 3.37+     | Local state and adjustment persistence                                              |
 | Tests             | PHPUnit          | Business-rule and persistence verification                           |
@@ -48,6 +49,8 @@ The default database is `var/payroll-no-es-compact.sqlite`. Previous experiment 
 | Command Shortcuts | Makefile         | Convenient entry points for routine development tasks                |
 
 Exact dependency versions are recorded in `composer.lock`, with dependency resolution targeting PHP 8.4.
+
+`App\Shared\Application\Clock` extends PSR-20's `Psr\Clock\ClockInterface`. Its `now()` method narrows the return type from `DateTimeImmutable` to `CarbonImmutable`, which is a compatible subtype. `CarbonClock` returns the current time in UTC; handlers retain the application contract and Carbon-specific timestamp operations. These clocks can also be passed to consumers of the standard PSR-20 interface. A general PSR-20 implementation returning only `DateTimeImmutable` would need an adapter to satisfy the narrower application contract. See [PSR-20](https://www.php-fig.org/psr/psr-20/).
 
 ## Module and Layer Structure
 

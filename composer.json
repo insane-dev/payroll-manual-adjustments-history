@@ -10,6 +10,7 @@
         "ext-pdo_sqlite": "*",
         "moneyphp/money": "^4.0",
         "nesbot/carbon": "^3.0",
+        "psr/clock": "^1.0",
         "ramsey/uuid": "^4.0"
     },
     "require-dev": {
