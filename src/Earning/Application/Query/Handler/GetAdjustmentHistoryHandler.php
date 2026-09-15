@@ -23,6 +23,8 @@ final readonly class GetAdjustmentHistoryHandler
             $line->systemAmount(),
             $line->adjustments(),
             $line->currentAmount(),
+            $line->initialAmount(),
+            $line->isManuallyAdjusted(),
         );
     }
 }

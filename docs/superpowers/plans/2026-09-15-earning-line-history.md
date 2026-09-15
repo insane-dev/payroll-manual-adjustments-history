@@ -1,6 +1,6 @@
 # Earning Line History Implementation Plan
 
-> Historical implementation plan. The subsequent module/layer restructuring supersedes the original file paths below; see [Technical Decisions](../../technical-decisions.md#module-and-layer-structure) for the current layout.
+> Historical Event Sourcing implementation plan from the original branch; the no-ES branch supersedes its storage and domain approach. See Technical Decisions for current behavior. Historical implementation plan. The subsequent module/layer restructuring supersedes the original file paths below; see [Technical Decisions](../../technical-decisions.md#module-and-layer-structure) for the current layout.
 
 > Execute inline with the executing-plans workflow. The user approved the architecture, vocabulary, and continuation to implementation.
 

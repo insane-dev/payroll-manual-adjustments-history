@@ -4,79 +4,122 @@ declare(strict_types=1);
 
 namespace App\Earning\Domain\Entity;
 
-use App\Earning\Domain\Event\EarningLineCreated;
-use App\Earning\Domain\Event\EarningLineEvent;
-use App\Earning\Domain\Event\ManualAdjustmentAdded;
-use App\Earning\Domain\Event\SystemAmountUpdated;
+use App\Earning\Domain\Value\EarningLineAdjustmentId;
+use App\Earning\Domain\Value\EarningLineAdjustmentType;
 use App\Earning\Domain\Value\EarningLineId;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Money\Money;
-use UnexpectedValueException;
+use Ramsey\Uuid\Uuid;
 
 final class EarningLine
 {
-    private EarningLineId $id;
-    private Money $systemAmount;
-    private Money $currentAmount;
-    private int $version = 0;
-
-    /** @var array<string, ManualAdjustment> */
+    /** @var array<string, EarningLineAdjustment> */
     private array $adjustments = [];
+    /** @var list<EarningLineAdjustment> */
+    private array $pendingAdjustments = [];
+    private int $persistedVersion = 0;
 
-    /** @var list<EarningLineEvent> */
-    private array $recordedEvents = [];
-
-    private function __construct()
-    {
+    private function __construct(
+        private EarningLineId $id,
+        private Money $initialAmount,
+        private Money $systemAmount,
+        private Money $currentAmount,
+        private bool $manuallyAdjusted,
+        private int $version,
+        private CarbonImmutable $createdAt,
+    ) {
     }
 
     public static function create(EarningLineId $id, Money $systemAmount, CarbonImmutable $recordedAt): self
     {
-        $line = new self();
-        $line->record(new EarningLineCreated($id, $systemAmount, $recordedAt));
+        $zero = new Money('0', $systemAmount->getCurrency());
+        $line = new self($id, $systemAmount, $zero, $zero, false, 0, $recordedAt->utc());
+        $line->appendAdjustment(new EarningLineAdjustment(
+            new EarningLineAdjustmentId(Uuid::uuid4()->toString()),
+            $systemAmount,
+            null,
+            null,
+            $recordedAt,
+            EarningLineAdjustmentType::INITIAL,
+        ));
 
         return $line;
     }
 
-    /** @param list<EarningLineEvent> $events */
-    public static function reconstitute(array $events): self
-    {
-        if ($events === [] || !$events[0] instanceof EarningLineCreated) {
-            throw new UnexpectedValueException('An Earning Line stream must begin with Earning Line Created.');
+    /** @param list<EarningLineAdjustment> $adjustments */
+    public static function restore(
+        EarningLineId $id,
+        Money $initialAmount,
+        Money $systemAmount,
+        Money $currentAmount,
+        bool $manuallyAdjusted,
+        int $version,
+        CarbonImmutable $createdAt,
+        array $adjustments,
+    ): self {
+        $line = new self($id, $initialAmount, $systemAmount, $currentAmount, $manuallyAdjusted, $version, $createdAt->utc());
+        foreach ($adjustments as $adjustment) {
+            $line->adjustments[$adjustment->id->value] = $adjustment;
         }
-
-        $line = new self();
-        foreach ($events as $event) {
-            $line->apply($event);
-        }
+        $line->persistedVersion = $version;
 
         return $line;
     }
 
     public function updateSystemAmount(Money $systemAmount, CarbonImmutable $recordedAt): void
     {
-        // The existence of any adjustment locks the baseline, even when their sum is zero.
-        if ($this->adjustments !== []) {
+        if ($this->manuallyAdjusted) {
             return;
         }
-
         $this->assertSameCurrency($systemAmount);
         if ($this->systemAmount->equals($systemAmount)) {
             return;
         }
 
-        $this->record(new SystemAmountUpdated($systemAmount, $recordedAt));
+        $this->appendAdjustment(new EarningLineAdjustment(
+            new EarningLineAdjustmentId(Uuid::uuid4()->toString()),
+            $systemAmount->subtract($this->systemAmount),
+            null,
+            null,
+            $recordedAt,
+            EarningLineAdjustmentType::SYSTEM,
+        ));
     }
 
-    public function addManualAdjustment(ManualAdjustment $adjustment): void
+    public function addManualAdjustment(EarningLineAdjustment $adjustment): void
     {
-        $this->record(new ManualAdjustmentAdded($adjustment));
+        if (!$adjustment->type->isManual()) {
+            throw new DomainException('Use Update System Amount for automatic recalculations.');
+        }
+        $this->appendAdjustment($adjustment);
+    }
+
+    private function appendAdjustment(EarningLineAdjustment $adjustment): void
+    {
+        $this->assertSameCurrency($adjustment->amount);
+        if (isset($this->adjustments[$adjustment->id->value])) {
+            throw new DomainException('This Earning Line Adjustment Id already exists.');
+        }
+        $this->currentAmount = $this->currentAmount->add($adjustment->amount);
+        if ($adjustment->type->isManual()) {
+            $this->manuallyAdjusted = true;
+        } else {
+            $this->systemAmount = $this->systemAmount->add($adjustment->amount);
+        }
+        $this->adjustments[$adjustment->id->value] = $adjustment;
+        $this->pendingAdjustments[] = $adjustment;
+        ++$this->version;
     }
 
     public function id(): EarningLineId
     {
         return $this->id;
+    }
+
+    public function initialAmount(): Money
+    {
+        return $this->initialAmount;
     }
 
     public function systemAmount(): Money
@@ -89,10 +132,9 @@ final class EarningLine
         return $this->currentAmount;
     }
 
-    /** @return list<ManualAdjustment> */
-    public function adjustments(): array
+    public function isManuallyAdjusted(): bool
     {
-        return array_values($this->adjustments);
+        return $this->manuallyAdjusted;
     }
 
     public function version(): int
@@ -100,55 +142,32 @@ final class EarningLine
         return $this->version;
     }
 
-    /** @return list<EarningLineEvent> */
-    public function recordedEvents(): array
+    public function persistedVersion(): int
     {
-        return $this->recordedEvents;
+        return $this->persistedVersion;
     }
 
-    public function markEventsCommitted(): void
+    public function createdAt(): CarbonImmutable
     {
-        $this->recordedEvents = [];
+        return $this->createdAt;
     }
 
-    private function record(EarningLineEvent $event): void
+    /** @return list<EarningLineAdjustment> */
+    public function adjustments(): array
     {
-        $this->apply($event);
-        $this->recordedEvents[] = $event;
+        return array_values($this->adjustments);
     }
 
-    private function apply(EarningLineEvent $event): void
+    /** @return list<EarningLineAdjustment> */
+    public function pendingAdjustments(): array
     {
-        if ($event instanceof EarningLineCreated) {
-            if ($this->version !== 0) {
-                throw new UnexpectedValueException('An Earning Line cannot be created twice.');
-            }
+        return $this->pendingAdjustments;
+    }
 
-            $this->id = $event->earningLineId;
-            $this->systemAmount = $event->systemAmount;
-            $this->currentAmount = $event->systemAmount;
-        } elseif ($event instanceof SystemAmountUpdated) {
-            if ($this->adjustments !== []) {
-                throw new UnexpectedValueException('A frozen System Amount cannot be updated in a saved stream.');
-            }
-
-            $this->assertSameCurrency($event->systemAmount);
-            $this->systemAmount = $event->systemAmount;
-            $this->currentAmount = $event->systemAmount;
-        } elseif ($event instanceof ManualAdjustmentAdded) {
-            $adjustment = $event->adjustment;
-            $this->assertSameCurrency($adjustment->amount);
-            if (isset($this->adjustments[$adjustment->id->value])) {
-                throw new DomainException('This Manual Adjustment Id already exists on the Earning Line.');
-            }
-
-            $this->currentAmount = $this->currentAmount->add($adjustment->amount);
-            $this->adjustments[$adjustment->id->value] = $adjustment;
-        } else {
-            throw new UnexpectedValueException('Unsupported Earning Line event.');
-        }
-
-        ++$this->version;
+    public function markPersisted(): void
+    {
+        $this->persistedVersion = $this->version;
+        $this->pendingAdjustments = [];
     }
 
     private function assertSameCurrency(Money $amount): void

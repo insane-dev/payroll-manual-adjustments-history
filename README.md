@@ -1,32 +1,32 @@
 # History of Manual Adjustments to an Earning Line
 
-A PHP proof of concept for the Alcor payroll assignment: an Earning Line accepts automatic updates until its first Manual Adjustment. Every adjustment is retained, and that first adjustment permanently freezes the System Amount.
+State-based PHP proof of concept for Alcor's payroll assignment. An Earning Line stores its salary state and an immutable history of Initial, System and Manual Adjustments. The first Manual Adjustment permanently prevents automatic recalculation from changing the line.
 
-**PHP 8.4+ · MoneyPHP · Carbon · Ramsey UUID · SQLite · PHPUnit**
+**PHP 8.4+ · MoneyPHP · Carbon · Ramsey UUID · SQLite · PHPUnit · DDD + CQRS**
+
+This is the `feat/earning-line-history-no-es` experiment. The Event Sourcing implementation remains in `feat/earning-line-history`. This variant uses ordinary state persistence with an append-only audit table.
 
 ## Run
 
-Prerequisites: Docker with Docker Compose, and Make. No local PHP or database server is required.
+With Docker Compose and Make:
 
 ```sh
 make setup
-make test
+make check
 make demo
 ```
 
-`make setup` builds the PHP 8.4 image and installs the locked Composer dependencies. `make check` runs Composer validation, PHP syntax checks, and all tests. `make shell` opens a container shell.
+`make setup` builds PHP 8.4 and installs locked dependencies. `make check` validates Composer configuration, checks PHP syntax, and runs all test suites.
 
-The demo writes to `var/payroll.sqlite` in the repository. Each run creates a new Earning Line; previous runs remain available. Copy the printed Earning Line Id to inspect its history in a separate process:
+Each demo creates a new line in `var/payroll-no-es-compact.sqlite`. Previous histories remain available. Copy the printed line UUID to read it in another process:
 
 ```sh
-docker compose run --rm php php bin/demo.php --history <earning-line-id>
+ docker compose run --rm php php bin/demo.php --history <earning-line-id>
 ```
 
-Tests use disposable SQLite databases and do not modify the demo database.
+The earlier databases `var/payroll.sqlite` (ES), `var/payroll-no-es.sqlite` (before Initial entries) and `var/payroll-no-es-initial.sqlite` (before compact storage) are kept separate. This schema requires a fresh database; there is no automatic migration between the experimental schemas. Set `PAYROLL_DATABASE` to select another new database; Docker requires passing it with `-e PAYROLL_DATABASE=/app/var/other.sqlite`.
 
-### Without Docker
-
-Use PHP 8.4+ and Composer, with `bcmath`, `pdo_sqlite`, and the extensions required by PHPUnit (including `dom`, `mbstring`, `xml`, and `xmlwriter`).
+With local 64-bit PHP 8.4+, SQLite 3.37+ and Composer:
 
 ```sh
 composer install
@@ -35,141 +35,102 @@ composer demo
 php bin/demo.php --history <earning-line-id>
 ```
 
-Set `PAYROLL_DATABASE` to use another database file. For example:
+Required extensions include bcmath and pdo_sqlite, plus PHPUnit's dom, mbstring, xml and xmlwriter requirements. Tests use disposable databases and do not change demo data.
 
-```sh
-PAYROLL_DATABASE=/tmp/alcor-demo.sqlite php bin/demo.php
-```
+## Model
 
-For Docker, pass it explicitly: `docker compose run --rm -e PAYROLL_DATABASE=/app/var/other.sqlite php php bin/demo.php`.
+`EarningLine` is the aggregate root. It owns Initial Amount, System Amount, Current Amount, manual precedence, version and its adjustment history.
 
-## Expected Scenario
+`EarningLineAdjustment` is an immutable entity with UUID, Type, signed Amount, Comment, Author Id and UTC Recorded At. Its type is an `EarningLineAdjustmentType` enum:
 
-| Step | Event | Current Amount |
+| Type | Meaning | Rules |
 | --- | --- | --- |
-| 1 | System calculation | USD 1000.00 |
-| 2 | System update | USD 1050.00 |
-| 3 | Manual Adjustment: −45.55 | USD 1004.45 |
-| 4 | Attempted system update, ignored | USD 1004.45 |
-| 5 | Manual Adjustment: +100.10 | USD 1104.55 |
-| 6 | Manual Adjustment: −0.10 | USD 1104.45 |
-| 7 | Manual Adjustment: −0.20 | USD 1104.25 |
-| 8 | Compensating Adjustment: +0.20 | **USD 1104.45** |
+| Initial | Original calculation, as the first and only Initial entry | Created with the line; may be zero; does not freeze automatic updates |
+| System | Difference between a new automatic calculation and the previous System Amount | Allowed only before the first Manual; comment and author optional |
+| Manual | Signed correction entered by a specialist | Nonzero amount, mandatory nonblank comment and author; permanently freezes System Amount |
 
-The final Adjustment History contains the frozen System Amount of **USD 1050.00**, all five adjustments, and the Current Amount. Each adjustment includes its UUID, signed amount, original comment, author UUID, and UTC timestamp with microseconds.
-
-The example's comments and signs are reproduced as supplied. The model applies signed deltas; it does not interpret whether a particular benefit or deduction should increase or decrease pay.
-
-## Domain Model
-
-The [Ubiquitous Language](docs/ubiquitous-language.md) defines the agreed names. Domain terms use Title Case in documentation; corresponding code types use PascalCase. PHP methods and properties use conventional camelCase.
-
-`EarningLine` is the aggregate: the boundary that owns and enforces the business rules. A `ManualAdjustment` is an immutable record belonging to that line.
+`UpdateSystemAmount` receives an absolute amount. Updating USD 1000.00 to USD 1050.00 records a System Adjustment of +USD 50.00. Repeating the same amount creates no adjustment. After any Manual Adjustment, automatic updates are ignored and no System Adjustment is recorded.
 
 ```text
-Current Amount = System Amount + sum of all Adjustment Amounts
+Current Amount = sum of all Initial, System and Manual Adjustment Amounts
+System Amount  = sum of Initial and System Adjustment Amounts
 ```
 
-Before the first Manual Adjustment, `UpdateSystemAmount` replaces the System Amount with a completed external calculation. The aggregate does not implement a salary calculation engine.
+Compensating a mistake creates another Manual Adjustment. Existing records are never edited or deleted. A net manual sum of zero does not restore automatic updates.
 
-After the first Manual Adjustment, all automatic updates are ignored. This rule depends on the existence of adjustments, never their sum. Fully compensating an earlier adjustment therefore cannot restore automatic updates.
+## Assignment Scenario
 
-There are no edit or delete operations for adjustments. A correction to a mistake is another ordinary `AddManualAdjustment` command.
+| Step | Action | Current Amount |
+| --- | --- | --- |
+| 1 | Initial calculation | USD 1000.00 |
+| 2 | System Adjustment +50.00 | USD 1050.00 |
+| 3 | Manual Adjustment −45.55 | USD 1004.45 |
+| 4 | Automatic recalculation ignored | USD 1004.45 |
+| 5 | Manual Adjustment +100.10 | USD 1104.55 |
+| 6 | Manual Adjustment −0.10 | USD 1104.45 |
+| 7 | Manual Adjustment −0.20 | USD 1104.25 |
+| 8 | Compensating Manual Adjustment +0.20 | **USD 1104.45** |
 
-### Commands, Events, and Query
+History contains seven records: one Initial Adjustment of USD 1000.00, one System Adjustment, five Manual Adjustments, frozen System Amount USD 1050.00 and Current Amount USD 1104.45. Manual numbering is separate from System numbering so the comment about adjustment #4 remains understandable. The original signs and comments are reproduced as supplied; the model does not interpret payroll formulas or benefit semantics.
 
-| Command | Event |
-| --- | --- |
-| `CreateEarningLine` | `EarningLineCreated` |
-| `UpdateSystemAmount` | `SystemAmountUpdated` |
-| `AddManualAdjustment` | `ManualAdjustmentAdded` |
-
-An ignored automatic update produces no event. Updating an unlocked line to the same System Amount also produces no event.
-
-`GetAdjustmentHistory` returns a readonly `AdjustmentHistory` containing the System Amount, all adjustments in recorded order, and Current Amount. The full Event Stream additionally contains accepted system updates preceding the first Manual Adjustment.
-
-## Architecture
+## Persistence and Architecture
 
 | Location | Responsibility |
 | --- | --- |
-| `src/Earning/Domain` | Entities/aggregate, Value Objects, events, and repository interfaces |
-| `src/Earning/Application` | Commands/handlers, queries/handlers/results, ports, and application exceptions |
-| `src/Earning/Infrastructure/Mapper` | Explicit domain-event/JSON mapping |
-| `src/Earning/Infrastructure/Persist/Write` | Event-sourced repository implementation, SQLite Event Store, and schema |
-| `src/Earning/UI/Cli` | CLI scenario, input handling, and history output |
-| `src/Shared` | Business-independent Clock contract and Carbon implementation |
-| `bin/demo.php` | Configuration and composition root with explicit constructor injection |
-| `tests/Unit`, `tests/Integration`, `tests/Acceptance` | Tests organized by category, then module and layer |
+| `src/Earning/Domain/Entity` | Aggregate state and immutable adjustments |
+| `src/Earning/Domain/Value` | Typed identifiers and Adjustment Type |
+| `src/Earning/Domain/Repository` | Repository interface |
+| `src/Earning/Application/Command/Handler` | Use-case orchestration |
+| `src/Earning/Application/Query` | History query, handler and result DTO |
+| `src/Earning/Infrastructure/Mapper` | Mapping stored rows to domain state |
+| `src/Earning/Infrastructure/Persist/Write` | SQLite repository and schema |
+| `src/Earning/UI/Cli` | Scenario, arguments and formatted output |
+| `src/Shared` | Clock contract and Carbon implementation |
+| `bin/demo.php` | Configuration and dependency composition |
 
-See [Module and Layer Structure](docs/technical-decisions.md#module-and-layer-structure) for the full convention and dependency rules. Optional folders are added only when needed. `Persist/Read` will hold a dedicated read adapter if one is introduced; this PoC reads history through the aggregate repository.
+`earning_lines` stores current state. `earning_line_adjustments` stores every amount-producing record in sequence order, starting with exactly one Initial entry at sequence 1. Initial Amount on the state row mirrors this first entry and is not added to the history sum a second time. MoneyPHP performs exact arithmetic in minor units. Persistence accepts signed 64-bit integers, from −9223372036854775808 to 9223372036854775807 minor units. The mapper rejects amounts or individual deltas outside this range before converting them to PHP integers; a failed save rolls back the entire transaction. Domain arithmetic can represent larger values, but they cannot be persisted.
 
-The repository loads the line's events and reconstitutes its state. Commands ask the aggregate to make a change, then append its pending events. Pending events are cleared only after a successful save. Reconstitution applies historical facts without generating new events.
+| Data | SQLite storage |
+| --- | --- |
+| Amounts | Signed `INTEGER`, in minor units |
+| UUIDs | 16-byte `BLOB` |
+| Adjustment Type | `INTEGER`: Initial = 0, System = 1, Manual = 2 |
+| Timestamps | `INTEGER`, UTC Unix epoch microseconds |
+| Manual flag, version, sequence | `INTEGER` |
+| Currency, comment | `TEXT`; currency stored only on the line |
 
-CQRS separates command and query responsibilities. Queries synchronously reconstitute the aggregate and return a read DTO; there is no separate read database or asynchronous projection. This keeps reads current and avoids maintaining the amount calculation in two places.
+Both tables use `STRICT` type enforcement and `WITHOUT ROWID` to avoid an extra hidden row identifier.
 
-### Why Event Sourcing?
+Saving uses one write transaction: check the persisted version under `BEGIN IMMEDIATE`, save state, insert pending adjustments, commit. On failure, both changes roll back and the aggregate retains pending adjustments. A concurrent stale writer receives `ConcurrentStreamWrite` and must reload before retrying. If a Manual Adjustment wins a race, a reloaded automatic update sees the freeze and is ignored.
 
-The business requirement is an immutable sequence of corrections. A small Event Sourcing implementation makes those facts the source of truth and lets the same history reproduce the current value. It also makes the permanent freeze straightforward to restore.
+Reads load state and history inside one snapshot transaction. Domain state is restored directly from rows; no domain events are replayed. CQRS separates commands and queries while using the same repository and database.
 
-A conventional object model with an append-only adjustment table would satisfy the assignment too. Event Sourcing was chosen to demonstrate the approach used by Alcor, while limiting the implementation to one aggregate and three event types. No event bus, generic aggregate framework, snapshots, or background workers are needed for this scope.
+There are no database triggers. Immutable domain entities and the repository enforce append-only history and permanent manual precedence through the application API. Foreign keys, CHECK constraints and unique keys validate row structure, ownership and ordering. Direct SQL updates or deletes are not protected by the application-level immutability guarantee.
 
-### Persistence and Concurrent Writes
-
-Events use explicit, versioned names such as `manual-adjustment-added.v1` and JSON payloads. Amounts are serialized as integer minor-unit **strings**, preserving values beyond PHP's native integer range. PHP object serialization and floating-point arithmetic are not used.
-
-The SQLite table uses `(stream_id, version)` as its primary key. Each append:
-
-1. Acquires a write lock with `BEGIN IMMEDIATE`.
-2. Checks that the saved version matches the version the caller loaded.
-3. Appends the entire batch in order, then commits.
-4. Rolls back the batch on any failure.
-
-A stale writer receives `ConcurrentStreamWrite`. The caller must reload and reconsider the command; the repository does not silently retry it. If a Manual Adjustment wins a race against an automatic update, the retried automatic update sees the frozen line and is ignored. If the automatic update wins, a retried Manual Adjustment applies to the newly accepted System Amount.
-
-SQLite triggers reject UPDATE, DELETE, and replacement of existing events. The explicit replacement guard matters because SQLite's [REPLACE behavior](https://www.sqlite.org/lang_conflict.html) can delete existing rows without firing DELETE triggers when recursive triggers are disabled. This guard does not depend on connection-specific settings.
-
-## Assumptions and Limits
-
-- Each line has one currency. All subsequent amounts must use that currency; the demo uses USD. Frozen automatic updates are ignored altogether, including their proposed currency.
-- Amounts are provided in integer minor units: `Money::USD('10010')` means USD 100.10. Rounding source calculations and currency conversion are outside the exercise.
-- A Manual Adjustment must be nonzero and have a nonblank UTF-8 comment. Valid comments are preserved verbatim. Negative System Amounts and Current Amounts are allowed because the assignment specifies no lower bound.
-- Callers supply line, adjustment, and author UUIDs. Author identity is assumed to come from an authenticated caller; this PoC does not implement authentication or authorization.
-- Reusing a Manual Adjustment Id on the same line is rejected, even if the payload matches. This prevents double application but is not a transparent idempotent-success protocol. IDs are scoped to an Earning Line for this check.
-- Timestamps come from an injected Clock and describe recording time, not an effective payroll date. Stream version defines order, including when timestamps are equal or a system clock moves backward.
-- Unknown lines, invalid adjustments, and write conflicts raise exceptions. CLI errors are printed to stderr with a nonzero exit code. SQLite lock contention waits up to five seconds before surfacing the database error.
-- SQLite schema initialization is automatic for this PoC. Schema migrations and event upcasting would be needed when evolving a deployed system; unknown event types fail explicitly.
-- Read cost grows with a line's event count. Snapshots or a separate projection can be added if measured volume warrants them.
-- Database triggers protect normal SQL writes, not a privileged owner who can remove triggers or replace the database file. Production audit guarantees also require controlled database access and backups.
+The state-based design directly meets the business case with fewer ES-specific concepts. Its trade-off is maintaining state and audit consistency transactionally, rather than deriving state from an event stream. Adding full replay or asynchronous projections would require a deliberate new design.
 
 ## Tests
 
-| Suite | What it tests | Docker command | Local command |
+| Suite | Boundary | Docker | Local |
 | --- | --- | --- | --- |
-| Unit | Domain rules and replay in memory | `make test-unit` | `composer test:unit` |
-| Integration | Handlers, repositories and real SQLite persistence | `make test-integration` | `composer test:integration` |
-| Acceptance | CLI behavior and history retrieval in separate processes | `make test-acceptance` | `composer test:acceptance` |
+| Unit | In-memory business rules and typed adjustment arithmetic | `make test-unit` | `composer test:unit` |
+| Integration | SQLite state/history persistence and handlers | `make test-integration` | `composer test:integration` |
+| Acceptance | CLI scenario and history read in separate processes | `make test-acceptance` | `composer test:acceptance` |
 
-`make test` or `composer test` runs all suites. Within each category, directories and namespaces mirror the module and layer being tested.
+`make test` runs all suites. Tests cover all eight steps, positive and negative System deltas, permanent precedence after net-zero compensation and reload, money precision, mandatory manual metadata, duplicate IDs, fixed currency, both race orders, initial-entry creation (including zero), rollback of line creation if the Initial insert fails, full rollback/retry, repository history preservation, compact storage types, signed 64-bit boundaries, overflow rollback, microsecond timestamp round-trips and durable CLI history.
 
-The test suite covers:
+## Assumptions
 
-- All eight assignment steps and the full final history.
-- Permanent manual precedence, including net-zero compensation and event reconstitution.
-- Exact decimal results and amounts beyond native integer range.
-- Blank comments, zero adjustments, currency mismatches, and duplicate adjustment IDs.
-- UTC timestamps, comment preservation, author identity, and history order.
-- Persistence across SQLite connections and separate CLI processes.
-- Both orders of the automatic-update/manual-adjustment race.
-- Whole-batch rollback and preservation of pending events after a failed save.
-- SQL UPDATE, DELETE, and REPLACE rejection.
+- Each line has one currency. `Money::USD('10010')` means USD 100.10. Source calculation, rounding and currency conversion are outside the exercise.
+- Negative amounts/totals are allowed; System and Manual adjustments must be nonzero. An Initial entry may be zero.
+- Caller supplies line/manual adjustment/author UUIDs. Automatic adjustment UUIDs are generated when accepting a new calculation. Authentication and source provenance are outside scope.
+- Manual comments are preserved verbatim and require non-whitespace UTF-8 text. System metadata can be absent.
+- Duplicate adjustment IDs within a line are rejected, not treated as transparent idempotent success.
+- Version protects state writes; sequence defines audit order independently of timestamps. Timestamps describe recording time, not effective payroll date.
+- Schema initializes automatically. Deployments would need migrations and explicit conversion from the ES version.
+- History is loaded with the aggregate for this small PoC; large histories may warrant pagination or a dedicated read adapter.
+- Errors surface as exceptions; CLI prints stderr and returns a nonzero exit code. SQLite waits up to five seconds for lock contention.
 
-Tests use real domain objects and SQLite. The application test injects a deterministic Clock; it does not mock the persistence layer.
+See [Ubiquitous Language](docs/ubiquitous-language.md), [Technical Decisions](docs/technical-decisions.md), and [Original Assignment](docs/task-source/alcor-code-assignment.md).
 
-## Notes
-
-- [Original assignment](docs/task-source/alcor-code-assignment.md)
-- [Ubiquitous Language](docs/ubiquitous-language.md)
-- [Technical Decisions](docs/technical-decisions.md)
-- [Implementation Plan](docs/superpowers/plans/2026-09-15-earning-line-history.md)
-
-AI assistance was used for design discussion, implementation, tests, documentation, and code review. The executable tests and documented trade-offs are the basis for validating the result.
+AI assistance was used for design, code, tests, documentation and review. Executable checks validate the resulting behavior.

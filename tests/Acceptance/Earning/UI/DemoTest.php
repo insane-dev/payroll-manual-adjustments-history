@@ -20,6 +20,7 @@ final class DemoTest extends TestCase
             self::assertStringContainsString('Step 8: Compensating adjustment => USD 1104.45', $output);
             self::assertStringContainsString('System Amount (Frozen): USD 1050.00', $output);
             self::assertStringContainsString('Current Amount: USD 1104.45', $output);
+            self::assertStringContainsString('Initial Adjustment: USD 1000.00', $output);
             self::assertStringContainsString('Correcting mistake in adjustment #4', $output);
             self::assertSame(1, preg_match('/Earning Line: ([a-f0-9-]+)/', $output, $matches));
 
@@ -27,10 +28,10 @@ final class DemoTest extends TestCase
             self::assertSame(0, $status, $errors);
             self::assertStringContainsString('Current Amount: USD 1104.45', $history);
             self::assertStringNotContainsString('Step 1:', $history);
-            self::assertSame(5, substr_count($history, 'Recorded At:'));
+            self::assertSame(7, substr_count($history, 'Recorded At:'));
 
             $connection = new PDO('sqlite:' . $database);
-            self::assertSame(7, (int) $connection->query('SELECT COUNT(*) FROM earning_line_events')->fetchColumn());
+            self::assertSame(7, (int) $connection->query('SELECT COUNT(*) FROM earning_line_adjustments')->fetchColumn());
             unset($connection);
         } finally {
             unlink($database);

@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Earning\Domain\Entity;
 
 use App\Earning\Domain\Entity\EarningLine;
-use App\Earning\Domain\Entity\ManualAdjustment;
+use App\Earning\Domain\Entity\EarningLineAdjustment;
 use App\Earning\Domain\Value\AdjustmentAuthorId;
 use App\Earning\Domain\Value\EarningLineId;
-use App\Earning\Domain\Value\ManualAdjustmentId;
+use App\Earning\Domain\Value\EarningLineAdjustmentId;
+use App\Earning\Domain\Value\EarningLineAdjustmentType;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Money\Money;
@@ -44,43 +45,36 @@ final class EarningLineTest extends TestCase
         }
 
         self::assertSame('105000', $line->systemAmount()->getAmount());
-        self::assertCount(5, $line->adjustments());
-        self::assertSame($first, $line->adjustments()[0]);
-        self::assertSame(['-4555', '10010', '-10', '-20', '20'], array_map(
-            static fn (ManualAdjustment $adjustment): string => $adjustment->amount->getAmount(),
+        self::assertCount(7, $line->adjustments());
+        self::assertSame($first, $line->adjustments()[2]);
+        self::assertSame(['100000', '5000', '-4555', '10010', '-10', '-20', '20'], array_map(
+            static fn (EarningLineAdjustment $adjustment): string => $adjustment->amount->getAmount(),
             $line->adjustments(),
         ));
-        self::assertCount(7, $line->recordedEvents());
 
-        $restored = EarningLine::reconstitute($line->recordedEvents());
-        self::assertEquals($line->adjustments(), $restored->adjustments());
-        self::assertSame('110445', $restored->currentAmount()->getAmount());
-        self::assertSame('105000', $restored->systemAmount()->getAmount());
-        self::assertSame(7, $restored->version());
-        self::assertSame([], $restored->recordedEvents());
     }
 
-    public function testCompensationDoesNotRestoreAutomaticUpdatesEvenAfterReconstitution(): void
+    public function testCompensationDoesNotRestoreAutomaticUpdates(): void
     {
         $line = $this->line();
         $line->addManualAdjustment($this->adjustment('-20'));
         $line->addManualAdjustment($this->adjustment('20'));
-        $restored = EarningLine::reconstitute($line->recordedEvents());
+        $restored = $line;
 
         $restored->updateSystemAmount(Money::USD('200000'), $this->now());
 
         self::assertSame('100000', $restored->currentAmount()->getAmount());
-        self::assertCount(2, $restored->adjustments());
-        self::assertSame([], $restored->recordedEvents());
+        self::assertCount(3, $restored->adjustments());
+        self::assertSame(3, $restored->version());
     }
 
-    public function testRepeatedSystemAmountDoesNotProduceAnEvent(): void
+    public function testRepeatedSystemAmountDoesNotProduceAnAdjustment(): void
     {
         $line = $this->line();
-        $line->markEventsCommitted();
+        $line->markPersisted();
         $line->updateSystemAmount(Money::USD('100000'), $this->now());
 
-        self::assertSame([], $line->recordedEvents());
+        self::assertSame([], $line->pendingAdjustments());
         self::assertSame(1, $line->version());
     }
 
@@ -94,7 +88,7 @@ final class EarningLineTest extends TestCase
             $line->addManualAdjustment($adjustment);
             self::fail('A duplicate adjustment was accepted.');
         } catch (DomainException) {
-            self::assertCount(1, $line->adjustments());
+            self::assertCount(2, $line->adjustments());
             self::assertSame('100010', $line->currentAmount()->getAmount());
             self::assertSame(2, $line->version());
         }
@@ -103,8 +97,8 @@ final class EarningLineTest extends TestCase
     public function testAdjustmentCurrencyMustMatchTheLine(): void
     {
         $line = $this->line();
-        $adjustment = new ManualAdjustment(
-            new ManualAdjustmentId(Uuid::uuid4()->toString()),
+        $adjustment = new EarningLineAdjustment(
+            new EarningLineAdjustmentId(Uuid::uuid4()->toString()),
             Money::EUR('10'),
             'Wrong currency',
             new AdjustmentAuthorId(Uuid::uuid4()->toString()),
@@ -116,7 +110,7 @@ final class EarningLineTest extends TestCase
             self::fail('A different currency was accepted.');
         } catch (DomainException) {
             self::assertSame('100000', $line->currentAmount()->getAmount());
-            self::assertCount(0, $line->adjustments());
+            self::assertCount(1, $line->adjustments());
         }
     }
 
@@ -163,8 +157,8 @@ final class EarningLineTest extends TestCase
 
     public function testRecordedTimeIsNormalizedToUtcWithoutLosingPrecision(): void
     {
-        $adjustment = new ManualAdjustment(
-            new ManualAdjustmentId(Uuid::uuid4()->toString()),
+        $adjustment = new EarningLineAdjustment(
+            new EarningLineAdjustmentId(Uuid::uuid4()->toString()),
             Money::USD('1'),
             'Keep the original comment verbatim. ',
             new AdjustmentAuthorId(Uuid::uuid4()->toString()),
@@ -175,15 +169,50 @@ final class EarningLineTest extends TestCase
         self::assertSame('Keep the original comment verbatim. ', $adjustment->comment);
     }
 
+    public function testSystemRecalculationsRecordSignedDeltasWithoutFreezingTheLine(): void
+    {
+        $line = $this->line();
+        $line->updateSystemAmount(Money::USD('105000'), $this->now());
+        $line->updateSystemAmount(Money::USD('99000'), $this->now());
+        self::assertSame(['100000', '5000', '-6000'], array_map(
+            static fn (EarningLineAdjustment $adjustment): string => $adjustment->amount->getAmount(),
+            $line->adjustments(),
+        ));
+        self::assertSame(EarningLineAdjustmentType::SYSTEM, $line->adjustments()[1]->type);
+        self::assertFalse($line->isManuallyAdjusted());
+        self::assertSame('100000', $line->initialAmount()->getAmount());
+        self::assertSame('99000', $line->systemAmount()->getAmount());
+        self::assertSame('99000', $line->currentAmount()->getAmount());
+    }
+
+    public function testManualAdjustmentRequiresAnAuthor(): void
+    {
+        $this->expectException(DomainException::class);
+        new EarningLineAdjustment(new EarningLineAdjustmentId(Uuid::uuid4()->toString()), Money::USD('1'), 'Correction', null, $this->now());
+    }
+
+    public function testCreationRecordsOneInitialAdjustmentIncludingZero(): void
+    {
+        $line = EarningLine::create(new EarningLineId(Uuid::uuid4()->toString()), Money::USD('0'), $this->now());
+        self::assertCount(1, $line->adjustments());
+        self::assertTrue($line->adjustments()[0]->type->isInitial());
+        self::assertSame('0', $line->adjustments()[0]->amount->getAmount());
+        self::assertSame('0', $line->currentAmount()->getAmount());
+        self::assertFalse($line->isManuallyAdjusted());
+        self::assertCount(1, $line->pendingAdjustments());
+        $line->updateSystemAmount(Money::USD('5000'), $this->now());
+        self::assertSame('5000', $line->currentAmount()->getAmount());
+    }
+
     private function line(): EarningLine
     {
         return EarningLine::create(new EarningLineId(Uuid::uuid4()->toString()), Money::USD('100000'), $this->now());
     }
 
-    private function adjustment(string $amount, string $comment = 'Correction'): ManualAdjustment
+    private function adjustment(string $amount, string $comment = 'Correction'): EarningLineAdjustment
     {
-        return new ManualAdjustment(
-            new ManualAdjustmentId(Uuid::uuid4()->toString()),
+        return new EarningLineAdjustment(
+            new EarningLineAdjustmentId(Uuid::uuid4()->toString()),
             Money::USD($amount),
             $comment,
             new AdjustmentAuthorId(Uuid::uuid4()->toString()),

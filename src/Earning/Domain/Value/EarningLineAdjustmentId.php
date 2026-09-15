@@ -6,7 +6,7 @@ namespace App\Earning\Domain\Value;
 
 use Ramsey\Uuid\Uuid;
 
-final readonly class ManualAdjustmentId
+final readonly class EarningLineAdjustmentId
 {
     public string $value;
 

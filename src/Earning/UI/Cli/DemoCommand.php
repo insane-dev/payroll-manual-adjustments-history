@@ -15,7 +15,7 @@ use App\Earning\Application\Query\Handler\GetAdjustmentHistoryHandler;
 use App\Earning\Application\Query\Result\AdjustmentHistory;
 use App\Earning\Domain\Value\AdjustmentAuthorId;
 use App\Earning\Domain\Value\EarningLineId;
-use App\Earning\Domain\Value\ManualAdjustmentId;
+use App\Earning\Domain\Value\EarningLineAdjustmentId;
 use InvalidArgumentException;
 use Money\Currencies\ISOCurrencies;
 use Money\Formatter\DecimalMoneyFormatter;
@@ -47,13 +47,21 @@ final readonly class DemoCommand
 
             $printHistory = static function (AdjustmentHistory $history) use ($format): void {
                 echo 'Earning Line: ' . $history->earningLineId->value . PHP_EOL;
-                echo ($history->adjustments === [] ? 'System Amount: ' : 'System Amount (Frozen): ') . $format($history->systemAmount) . PHP_EOL;
-                foreach ($history->adjustments as $index => $adjustment) {
-                    printf("Adjustment %d: %s%s\n", $index + 1, $adjustment->amount->isPositive() ? '+' : '', $format($adjustment->amount));
+                echo 'Initial Amount: ' . $format($history->initialAmount) . PHP_EOL;
+                echo (!$history->manuallyAdjusted ? 'System Amount: ' : 'System Amount (Frozen): ') . $format($history->systemAmount) . PHP_EOL;
+                $manualNumber = 0;
+                $systemNumber = 0;
+                foreach ($history->adjustments as $adjustment) {
+                    $label = match (true) {
+                        $adjustment->type->isInitial() => 'Initial Adjustment',
+                        $adjustment->type->isManual() => 'Manual Adjustment ' . ++$manualNumber,
+                        default => 'System Adjustment ' . ++$systemNumber,
+                    };
+                    printf("%s: %s%s\n", $label, !$adjustment->type->isInitial() && $adjustment->amount->isPositive() ? '+' : '', $format($adjustment->amount));
                     echo '  Id: ' . $adjustment->id->value . PHP_EOL;
-                    echo '  Author: ' . $adjustment->authorId->value . PHP_EOL;
+                    echo '  Author: ' . ($adjustment->authorId?->value ?? 'System') . PHP_EOL;
                     echo '  Recorded At: ' . $adjustment->recordedAt->format('Y-m-d\TH:i:s.uP') . PHP_EOL;
-                    echo '  Comment: ' . $adjustment->comment . PHP_EOL;
+                    echo '  Comment: ' . ($adjustment->comment ?? ($adjustment->type->isInitial() ? 'Initial calculation' : 'Automatic recalculation')) . PHP_EOL;
                 }
                 echo 'Current Amount: ' . $format($history->currentAmount) . PHP_EOL;
             };
@@ -74,7 +82,7 @@ final readonly class DemoCommand
                 printf("Step %d: %s => %s\n", $number, $description, $format($query->handle($request)->currentAmount));
             };
             $adjust = static function (string $amount, string $comment) use ($add, $id, $authorId): void {
-                $add->handle(new AddManualAdjustment($id, new ManualAdjustmentId(Uuid::uuid4()->toString()), Money::USD($amount), $comment, $authorId));
+                $add->handle(new AddManualAdjustment($id, new EarningLineAdjustmentId(Uuid::uuid4()->toString()), Money::USD($amount), $comment, $authorId));
             };
 
             $create->handle(new CreateEarningLine($id, Money::USD('100000')));

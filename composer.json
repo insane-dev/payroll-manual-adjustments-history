@@ -1,6 +1,6 @@
 {
     "name": "alcor/earning-line-history",
-    "description": "Event-sourced earning lines with immutable manual adjustment history",
+    "description": "Earning line state with immutable system and manual adjustment history",
     "type": "project",
     "license": "proprietary",
     "require": {

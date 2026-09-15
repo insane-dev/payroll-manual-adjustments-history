@@ -1,60 +1,44 @@
 # Ubiquitous Language
 
-Use Title Case for domain terms in documentation and PascalCase for corresponding type names in code. A domain term does not necessarily require a dedicated class.
+Use Title Case for domain terms in documentation and PascalCase for corresponding type names in code. Methods and properties use camelCase. Enum cases use UPPERCASE (UPPER_SNAKE_CASE for compound names); semantic checks may use predicates such as `isManual()`. This branch uses a state-based model without Event Sourcing.
 
-## Domain Terms
+| Term | Code Type | Meaning |
+| --- | --- | --- |
+| Earning Line | `EarningLine` | A salary earning line whose state and adjustment history form one aggregate. |
+| Earning Line Id | `EarningLineId` | Stable UUID of a line. |
+| Initial Amount | `Money` | The original automatic calculation when the line was created. Never changes. |
+| System Amount | `Money` | The latest accepted automatic calculation. Permanently frozen by the first Manual Adjustment. |
+| Current Amount | `Money` | Sum of all Initial, System and Manual Adjustment Amounts. |
+| Earning Line Adjustment | `EarningLineAdjustment` | An immutable, identified record of a signed change to the line. |
+| Earning Line Adjustment Id | `EarningLineAdjustmentId` | Stable UUID identifying a correction within a line. |
+| Earning Line Adjustment Type | `EarningLineAdjustmentType` | Initial, System or Manual. |
+| Initial Adjustment | `EarningLineAdjustmentType::INITIAL` | The original calculation recorded exactly once at sequence 1 when the line is created. Zero is allowed. |
+| System Adjustment | `EarningLineAdjustmentType::SYSTEM` | Difference between a new automatic calculation and the previous System Amount. Allowed only before the first Manual Adjustment. |
+| Manual Adjustment | `EarningLineAdjustmentType::MANUAL` | Signed correction entered by a specialist, requiring a comment and author. |
+| Adjustment Amount | `Money` | Signed delta, never an absolute replacement amount. |
+| Adjustment Comment | — | Explanation; mandatory and nonblank for Manual, optional for System. Preserved verbatim. |
+| Adjustment Author Id | `AdjustmentAuthorId` | Specialist UUID; mandatory for Manual, absent for automatic recalculations. |
+| Recorded At | `CarbonImmutable` | Recording time normalized to UTC with microseconds. History sequence defines order. |
+| Adjustment History | `AdjustmentHistory` | Initial Amount, System Amount, all three types of adjustments, Current Amount, and manual precedence status. |
+| Compensating Adjustment | — | Another Manual Adjustment that corrects a mistake without changing the earlier record. |
 
-| Term                 | Code Type            | Meaning                                                                                                                |
-|----------------------|----------------------|------------------------------------------------------------------------------------------------------------------------|
-| Earning Line         | `EarningLine`        | A single earning line containing a System Amount and a history of Manual Adjustments. This is the aggregate boundary.  |
-| Earning Line Id      | `EarningLineId`      | The stable identifier of an Earning Line.                                                                              |
-| System Amount        | `Money`              | The most recent accepted result of an automatic calculation. It cannot change after the first Manual Adjustment.       |
-| Manual Adjustment    | `ManualAdjustment`   | An immutable record of a manual change to an Earning Line's amount.                                                    |
-| Manual Adjustment Id | `ManualAdjustmentId` | The stable identifier of a Manual Adjustment, allowing it to be located unambiguously in the history.                  |
-| Adjustment Amount    | `Money`              | A signed amount added to the Earning Line's value, rather than a replacement value.                                    |
-| Adjustment Comment   | —                    | The mandatory, nonblank explanation for a Manual Adjustment.                                                           |
-| Adjustment Author Id | `AdjustmentAuthorId` | The identifier of the specialist who made a Manual Adjustment.                                                         |
-| Recorded At          | —                    | The time a Manual Adjustment was recorded, expressed in UTC.                                                           |
-| Current Amount       | `Money`              | The System Amount plus the sum of all Adjustment Amounts.                                                              |
-| Adjustment History   | `AdjustmentHistory`  | A read representation containing the System Amount, every Manual Adjustment in recorded order, and the Current Amount. |
+## Commands and Query
 
-`Money` refers to the moneyphp monetary value type. The three amount terms describe distinct business roles of the same value type.
+- **Create Earning Line** (`CreateEarningLine`) accepts the initial absolute system calculation and records an Initial Adjustment of that amount.
+- **Update System Amount** (`UpdateSystemAmount`) accepts a new absolute calculation. The line computes and records a System Adjustment delta. An unchanged amount or frozen line produces no adjustment.
+- **Add Manual Adjustment** (`AddManualAdjustment`) accepts the signed delta, adjustment UUID, comment, and author UUID.
+- **Get Adjustment History** (`GetAdjustmentHistory`) returns the saved line state and all adjustments in sequence order.
 
-Base Salary is an example of what an Earning Line represents. The model's adjustment rules do not depend on the kind of earning.
+## Invariants
 
-## Commands and Events
+1. Current Amount = sum of Initial, System and Manual Adjustment Amounts.
+2. System Amount = sum of Initial and System Adjustment Amounts.
+3. The first Manual Adjustment permanently prevents further System Adjustments and freezes System Amount.
+4. Compensation, including a net manual sum of zero, never removes that precedence.
+5. All saved adjustments are immutable and traceable. Mistakes require new entries.
+6. Exactly one Initial Adjustment starts the history. Initial Amount in the line state mirrors that record; it is not added twice.
+7. A line uses one currency. Arithmetic uses exact minor-unit strings through MoneyPHP.
 
-Commands express intent. Events express accepted facts in the past tense.
+For the assignment: Initial Amount is USD 1000.00; one System Adjustment is +USD 50.00; frozen System Amount is USD 1050.00; five Manual Adjustments yield Current Amount USD 1104.45.
 
-| Action                                                           | Command               | Event                   |
-|------------------------------------------------------------------|-----------------------|-------------------------|
-| Create an Earning Line with an initial System Amount             | `CreateEarningLine`   | `EarningLineCreated`    |
-| Update the System Amount using a completed automatic calculation | `UpdateSystemAmount`  | `SystemAmountUpdated`   |
-| Add a Manual Adjustment                                          | `AddManualAdjustment` | `ManualAdjustmentAdded` |
-
-The Earning Line receives the result of an external calculation. It does not calculate salary from source data itself; this is why the command is named Update System Amount.
-
-After the first Manual Adjustment, Update System Amount leaves the state unchanged and does not produce a System Amount Updated event.
-
-## Query
-
-**Get Adjustment History** (`GetAdjustmentHistory`) returns an Adjustment History, including the Current Amount.
-
-## Business Rules
-
-1. Before the first Manual Adjustment, the System Amount can be updated.
-2. The first Manual Adjustment permanently freezes the most recently accepted System Amount.
-3. Every Manual Adjustment remains visible and traceable. Saved adjustments cannot be edited or deleted through the model.
-4. A mistake is corrected by adding another Manual Adjustment.
-5. The Current Amount equals the System Amount plus all Adjustment Amounts.
-6. Automatic updates remain blocked even if the sum of Manual Adjustments returns to zero.
-
-## Contextual Terms
-
-- **Compensating Adjustment** is an ordinary Manual Adjustment that compensates for an earlier mistake. It does not require a separate type or command.
-- **Frozen System Amount** describes the System Amount after the first Manual Adjustment. It is not a separate copy of the amount.
-- **Adjustment History** presents the system baseline and manual changes. It is distinct from the full technical Event Stream, which also contains accepted System Amount updates before the first Manual Adjustment.
-
-## Technical Vocabulary
-
-Event Stream, Stream Version, and Event Store belong to the implementation vocabulary, rather than the business Ubiquitous Language.
+Version, optimistic concurrency, database transactions, and persisted state are technical terms rather than additional business concepts. Base Salary is the assignment's example of an Earning Line.

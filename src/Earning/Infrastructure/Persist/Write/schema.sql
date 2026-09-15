@@ -1,29 +1,25 @@
-CREATE TABLE IF NOT EXISTS earning_line_events (
-    stream_id TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS earning_lines (
+    id BLOB NOT NULL PRIMARY KEY CHECK (length(id) = 16),
+    initial_amount INTEGER NOT NULL,
+    system_amount INTEGER NOT NULL,
+    current_amount INTEGER NOT NULL,
+    currency TEXT NOT NULL CHECK (length(currency) = 3),
+    manually_adjusted INTEGER NOT NULL CHECK (manually_adjusted IN (0, 1)),
     version INTEGER NOT NULL CHECK (version > 0),
-    event_type TEXT NOT NULL,
-    payload TEXT NOT NULL CHECK (json_valid(payload)),
-    PRIMARY KEY (stream_id, version)
-);
+    created_at INTEGER NOT NULL
+) STRICT, WITHOUT ROWID;
 
-CREATE TRIGGER IF NOT EXISTS earning_line_events_no_update
-BEFORE UPDATE ON earning_line_events
-BEGIN
-    SELECT RAISE(ABORT, 'Saved events cannot be updated');
-END;
-
-CREATE TRIGGER IF NOT EXISTS earning_line_events_no_delete
-BEFORE DELETE ON earning_line_events
-BEGIN
-    SELECT RAISE(ABORT, 'Saved events cannot be deleted');
-END;
-
--- REPLACE can bypass DELETE triggers unless recursive triggers are enabled on the writer's connection.
-CREATE TRIGGER IF NOT EXISTS earning_line_events_no_replace
-BEFORE INSERT ON earning_line_events
-WHEN EXISTS (
-    SELECT 1 FROM earning_line_events WHERE stream_id = NEW.stream_id AND version = NEW.version
-)
-BEGIN
-    SELECT RAISE(ABORT, 'Saved events cannot be replaced');
-END;
+CREATE TABLE IF NOT EXISTS earning_line_adjustments (
+    earning_line_id BLOB NOT NULL REFERENCES earning_lines(id),
+    id BLOB NOT NULL CHECK (length(id) = 16),
+    sequence INTEGER NOT NULL CHECK (sequence > 0),
+    type INTEGER NOT NULL CHECK (type IN (0, 1, 2)),
+    amount INTEGER NOT NULL CHECK (type = 0 OR amount <> 0),
+    comment TEXT,
+    author_id BLOB CHECK (author_id IS NULL OR length(author_id) = 16),
+    recorded_at INTEGER NOT NULL,
+    CHECK (type <> 2 OR (comment IS NOT NULL AND author_id IS NOT NULL)),
+    CHECK ((type = 0) = (sequence = 1)),
+    PRIMARY KEY (earning_line_id, id),
+    UNIQUE (earning_line_id, sequence)
+) STRICT, WITHOUT ROWID;
