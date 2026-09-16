@@ -15,20 +15,34 @@ use App\Earning\Application\Query\Handler\GetAdjustmentHistoryHandler;
 use App\Earning\Domain\Value\AdjustmentAuthorId;
 use App\Earning\Domain\Value\EarningLineAdjustmentId;
 use App\Earning\Domain\Value\EarningLineId;
-use App\Earning\Infrastructure\Persist\Write\SqliteEarningLineRepository;
+use App\Earning\Infrastructure\Persist\Write\MysqlEarningLineRepository;
+use App\Earning\Infrastructure\Persist\Write\MysqlSchema;
 use App\Shared\Application\Clock;
+use App\Tests\Shared\Infrastructure\Persist\MysqlTestDatabase;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Money\Money;
-use PDO;
 use PHPUnit\Framework\TestCase;
 use Ramsey\Uuid\Uuid;
 
 final class EarningLineWorkflowTest extends TestCase
 {
+    private MysqlTestDatabase $database;
+
+    protected function setUp(): void
+    {
+        $this->database = new MysqlTestDatabase();
+        (new MysqlSchema())->initialize($this->database->connection());
+    }
+
+    protected function tearDown(): void
+    {
+        $this->database->drop();
+    }
+
     public function testTheAssignmentRunsThroughCommandsAndReturnsTheCompleteSavedHistory(): void
     {
-        $earningLines = new SqliteEarningLineRepository(new PDO('sqlite::memory:'));
+        $earningLines = new MysqlEarningLineRepository($this->database->connection());
         $clock = new class implements Clock {
             public function now(): CarbonImmutable
             {
@@ -39,8 +53,8 @@ final class EarningLineWorkflowTest extends TestCase
         $update = new UpdateSystemAmountHandler($earningLines, $clock);
         $add = new AddManualAdjustmentHandler($earningLines, $clock);
         $query = new GetAdjustmentHistoryHandler($earningLines);
-        $id = new EarningLineId(Uuid::uuid4()->toString());
-        $authorId = new AdjustmentAuthorId(Uuid::uuid4()->toString());
+        $id = new EarningLineId(Uuid::uuid7()->toString());
+        $authorId = new AdjustmentAuthorId(Uuid::uuid7()->toString());
         $request = new GetAdjustmentHistory($id);
 
         $create->handle(new CreateEarningLine($id, Money::USD('100000')));
@@ -48,7 +62,7 @@ final class EarningLineWorkflowTest extends TestCase
         $update->handle(new UpdateSystemAmount($id, Money::USD('105000')));
         self::assertSame('105000', $query->handle($request)->currentAmount->getAmount());
 
-        $firstId = new EarningLineAdjustmentId(Uuid::uuid4()->toString());
+        $firstId = new EarningLineAdjustmentId(Uuid::uuid7()->toString());
         $firstCommand = new AddManualAdjustment($id, $firstId, Money::USD('-4555'), 'Employee declined dental benefit; reversing deduction', $authorId);
         $add->handle($firstCommand);
         $firstHistory = $query->handle($request);
@@ -65,7 +79,7 @@ final class EarningLineWorkflowTest extends TestCase
             ['-20', 'Second minor rounding adjustment', '110425'],
             ['20', 'Correcting mistake in adjustment #4', '110445'],
         ] as [$amount, $comment, $expected]) {
-            $add->handle(new AddManualAdjustment($id, new EarningLineAdjustmentId(Uuid::uuid4()->toString()), Money::USD($amount), $comment, $authorId));
+            $add->handle(new AddManualAdjustment($id, new EarningLineAdjustmentId(Uuid::uuid7()->toString()), Money::USD($amount), $comment, $authorId));
             self::assertSame($expected, $query->handle($request)->currentAmount->getAmount());
         }
 

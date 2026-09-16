@@ -98,10 +98,10 @@ final class EarningLineTest extends TestCase
     {
         $line = $this->line();
         $adjustment = new EarningLineAdjustment(
-            new EarningLineAdjustmentId(Uuid::uuid4()->toString()),
+            new EarningLineAdjustmentId(Uuid::uuid7()->toString()),
             Money::EUR('10'),
             'Wrong currency',
-            new AdjustmentAuthorId(Uuid::uuid4()->toString()),
+            new AdjustmentAuthorId(Uuid::uuid7()->toString()),
             $this->now(),
         );
 
@@ -124,7 +124,7 @@ final class EarningLineTest extends TestCase
     public function testAmountsBeyondNativeIntegerRangeRemainExact(): void
     {
         $line = EarningLine::create(
-            new EarningLineId(Uuid::uuid4()->toString()),
+            new EarningLineId(Uuid::uuid7()->toString()),
             Money::USD('999999999999999999999999'),
             $this->now(),
         );
@@ -160,10 +160,10 @@ final class EarningLineTest extends TestCase
     public function testRecordedTimeIsNormalizedToUtcWithoutLosingPrecision(): void
     {
         $adjustment = new EarningLineAdjustment(
-            new EarningLineAdjustmentId(Uuid::uuid4()->toString()),
+            new EarningLineAdjustmentId(Uuid::uuid7()->toString()),
             Money::USD('1'),
             'Keep the original comment verbatim. ',
-            new AdjustmentAuthorId(Uuid::uuid4()->toString()),
+            new AdjustmentAuthorId(Uuid::uuid7()->toString()),
             CarbonImmutable::parse('2026-09-15T12:34:56.123456+03:00'),
         );
 
@@ -190,12 +190,12 @@ final class EarningLineTest extends TestCase
     public function testManualAdjustmentRequiresAnAuthor(): void
     {
         $this->expectException(DomainException::class);
-        new EarningLineAdjustment(new EarningLineAdjustmentId(Uuid::uuid4()->toString()), Money::USD('1'), 'Correction', null, $this->now());
+        new EarningLineAdjustment(new EarningLineAdjustmentId(Uuid::uuid7()->toString()), Money::USD('1'), 'Correction', null, $this->now());
     }
 
     public function testCreationRecordsOneInitialAdjustmentIncludingZero(): void
     {
-        $line = EarningLine::create(new EarningLineId(Uuid::uuid4()->toString()), Money::USD('0'), $this->now());
+        $line = EarningLine::create(new EarningLineId(Uuid::uuid7()->toString()), Money::USD('0'), $this->now());
         self::assertCount(1, $line->adjustments());
         self::assertTrue($line->adjustments()[0]->type->isInitial());
         self::assertSame('0', $line->adjustments()[0]->amount->getAmount());
@@ -208,17 +208,17 @@ final class EarningLineTest extends TestCase
 
     private function line(): EarningLine
     {
-        return EarningLine::create(new EarningLineId(Uuid::uuid4()->toString()), Money::USD('100000'), $this->now());
+        return EarningLine::create(new EarningLineId(Uuid::uuid7()->toString()), Money::USD('100000'), $this->now());
     }
 
     /** @param numeric-string $amount */
     private function adjustment(string $amount, string $comment = 'Correction'): EarningLineAdjustment
     {
         return new EarningLineAdjustment(
-            new EarningLineAdjustmentId(Uuid::uuid4()->toString()),
+            new EarningLineAdjustmentId(Uuid::uuid7()->toString()),
             Money::USD($amount),
             $comment,
-            new AdjustmentAuthorId(Uuid::uuid4()->toString()),
+            new AdjustmentAuthorId(Uuid::uuid7()->toString()),
             $this->now(),
         );
     }

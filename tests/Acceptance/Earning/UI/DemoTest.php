@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Acceptance\Earning\UI;
 
-use PDO;
+use App\Tests\Shared\Infrastructure\Persist\MysqlTestDatabase;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
@@ -12,7 +12,7 @@ final class DemoTest extends TestCase
 {
     public function testTheCliDemonstratesTheScenarioAndCanReadItInAnotherProcess(): void
     {
-        $database = tempnam(sys_get_temp_dir(), 'alcor-demo-');
+        $database = new MysqlTestDatabase();
         try {
             [$status, $output, $errors] = $this->runCli($database);
             self::assertSame(0, $status, $errors);
@@ -31,7 +31,7 @@ final class DemoTest extends TestCase
             self::assertStringNotContainsString('Step 1:', $history);
             self::assertSame(7, substr_count($history, 'Recorded At:'));
 
-            $connection = new PDO('sqlite:' . $database);
+            $connection = $database->connection();
             $query = $connection->query('SELECT COUNT(*) FROM earning_line_adjustments');
             if ($query === false) {
                 throw new RuntimeException('Cannot query adjustment history.');
@@ -39,18 +39,18 @@ final class DemoTest extends TestCase
             self::assertSame(7, (int) $query->fetchColumn());
             unset($connection);
         } finally {
-            unlink($database);
+            $database->drop();
         }
     }
 
     /** @return array{int, string, string} */
-    private function runCli(string $database, string ...$arguments): array
+    private function runCli(MysqlTestDatabase $database, string ...$arguments): array
     {
         $process = proc_open(
             [PHP_BINARY, __DIR__ . '/../../../../bin/demo.php', ...array_values($arguments)],
             [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
-            env_vars: ['PAYROLL_DATABASE' => $database],
+            env_vars: $database->environment(),
         );
         if ($process === false) {
             throw new RuntimeException('Cannot start the CLI process.');

@@ -73,15 +73,15 @@ final readonly class DemoCommand
             $create = $this->createEarningLine;
             $update = $this->updateSystemAmount;
             $add = $this->addManualAdjustment;
-            $id = new EarningLineId(Uuid::uuid4()->toString());
-            $authorId = new AdjustmentAuthorId(Uuid::uuid4()->toString());
+            $id = new EarningLineId(Uuid::uuid7()->toString());
+            $authorId = new AdjustmentAuthorId(Uuid::uuid7()->toString());
             $request = new GetAdjustmentHistory($id);
 
             $step = static function (int $number, string $description) use ($query, $request, $format): void {
                 printf("Step %d: %s => %s\n", $number, $description, $format($query->handle($request)->currentAmount));
             };
             $adjust = static function (Money $amount, string $comment) use ($add, $id, $authorId): void {
-                $add->handle(new AddManualAdjustment($id, new EarningLineAdjustmentId(Uuid::uuid4()->toString()), $amount, $comment, $authorId));
+                $add->handle(new AddManualAdjustment($id, new EarningLineAdjustmentId(Uuid::uuid7()->toString()), $amount, $comment, $authorId));
             };
 
             $create->handle(new CreateEarningLine($id, Money::USD('100000')));

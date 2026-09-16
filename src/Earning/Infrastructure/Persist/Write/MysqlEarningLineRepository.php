@@ -11,30 +11,26 @@ use App\Earning\Domain\Repository\EarningLineRepository;
 use App\Earning\Domain\Value\EarningLineId;
 use App\Earning\Infrastructure\Mapper\EarningLineMapper;
 use PDO;
+use PDOException;
 use PDOStatement;
-use RuntimeException;
 use Throwable;
 
-final readonly class SqliteEarningLineRepository implements EarningLineRepository
+final readonly class MysqlEarningLineRepository implements EarningLineRepository
 {
     public function __construct(
         private PDO $connection,
         private EarningLineMapper $earningLineMapper = new EarningLineMapper(),
     ) {
         $connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $connection->exec('PRAGMA foreign_keys = ON');
-        $connection->exec('PRAGMA busy_timeout = 5000');
-        $schema = file_get_contents(__DIR__ . '/schema.sql');
-        if ($schema === false) {
-            throw new RuntimeException('Cannot read the SQLite schema.');
-        }
-        $connection->exec($schema);
+        $connection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+        $connection->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, false);
     }
 
     /** @phpstan-impure */
     public function get(EarningLineId $id): EarningLine
     {
         // A read transaction keeps the state and its history on the same database snapshot.
+        $this->connection->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
         $this->connection->beginTransaction();
         try {
             $query = $this->execute('SELECT * FROM earning_lines WHERE id = :id', ['id' => $this->earningLineMapper->binaryId($id->value)]);
@@ -59,19 +55,23 @@ final readonly class SqliteEarningLineRepository implements EarningLineRepositor
         if ($line->persistedVersion() === $line->version()) {
             return;
         }
-        $this->connection->exec('BEGIN IMMEDIATE');
+        $this->connection->beginTransaction();
         try {
-            $query = $this->execute('SELECT version FROM earning_lines WHERE id = :id', ['id' => $this->earningLineMapper->binaryId($line->id()->value)]);
-            $actualVersion = $query->fetchColumn();
-            $query->closeCursor();
-            if (($actualVersion === false ? 0 : $actualVersion) !== $line->persistedVersion()) {
-                throw new ConcurrentEarningLineWrite('Earning Line changed. Reload before retrying: ' . $line->id()->value);
-            }
             $state = $this->earningLineMapper->toStateRow($line);
-            if ($actualVersion === false) {
-                $this->execute('INSERT INTO earning_lines (id, initial_amount, system_amount, current_amount, currency, manually_adjusted, version, created_at) VALUES (:id, :initial_amount, :system_amount, :current_amount, :currency, :manually_adjusted, :version, :created_at)', $state);
+            if ($line->persistedVersion() === 0) {
+                try {
+                    $this->execute('INSERT INTO earning_lines (id, initial_amount, system_amount, current_amount, currency, manually_adjusted, version, created_at) VALUES (:id, :initial_amount, :system_amount, :current_amount, :currency, :manually_adjusted, :version, :created_at)', $state);
+                } catch (PDOException $exception) {
+                    if (($exception->errorInfo[1] ?? null) === 1062) {
+                        throw new ConcurrentEarningLineWrite('Earning Line already exists: ' . $line->id()->value, previous: $exception);
+                    }
+                    throw $exception;
+                }
             } else {
-                $this->execute('UPDATE earning_lines SET initial_amount = :initial_amount, system_amount = :system_amount, current_amount = :current_amount, currency = :currency, manually_adjusted = :manually_adjusted, version = :version, created_at = :created_at WHERE id = :id', $state);
+                $update = $this->execute('UPDATE earning_lines SET initial_amount = :initial_amount, system_amount = :system_amount, current_amount = :current_amount, currency = :currency, manually_adjusted = :manually_adjusted, version = :version, created_at = :created_at WHERE id = :id AND version = :expected_version', [...$state, 'expected_version' => $line->persistedVersion()]);
+                if ($update->rowCount() !== 1) {
+                    throw new ConcurrentEarningLineWrite('Earning Line changed. Reload before retrying: ' . $line->id()->value);
+                }
             }
             $sequence = count($line->adjustments()) - count($line->pendingAdjustments());
             foreach ($line->pendingAdjustments() as $adjustment) {
@@ -80,9 +80,11 @@ final readonly class SqliteEarningLineRepository implements EarningLineRepositor
                     $this->earningLineMapper->toAdjustmentRow($line->id(), ++$sequence, $adjustment),
                 );
             }
-            $this->connection->exec('COMMIT');
+            $this->connection->commit();
         } catch (Throwable $exception) {
-            $this->connection->exec('ROLLBACK');
+            if ($this->connection->inTransaction()) {
+                $this->connection->rollBack();
+            }
             throw $exception;
         }
         $line->markPersisted();

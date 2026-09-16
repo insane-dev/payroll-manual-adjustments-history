@@ -35,7 +35,7 @@ final class EarningLine
         $zero = new Money('0', $systemAmount->getCurrency());
         $line = new self($id, $systemAmount, $zero, $zero, false, 0, $recordedAt->utc());
         $line->appendAdjustment(new EarningLineAdjustment(
-            new EarningLineAdjustmentId(Uuid::uuid4()->toString()),
+            new EarningLineAdjustmentId(Uuid::uuid7()->toString()),
             $systemAmount,
             null,
             null,
@@ -77,7 +77,7 @@ final class EarningLine
         }
 
         $this->appendAdjustment(new EarningLineAdjustment(
-            new EarningLineAdjustmentId(Uuid::uuid4()->toString()),
+            new EarningLineAdjustmentId(Uuid::uuid7()->toString()),
             $systemAmount->subtract($this->systemAmount),
             null,
             null,

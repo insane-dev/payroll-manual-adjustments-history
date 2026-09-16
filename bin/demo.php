@@ -6,21 +6,23 @@ use App\Earning\Application\Command\Handler\AddManualAdjustmentHandler;
 use App\Earning\Application\Command\Handler\CreateEarningLineHandler;
 use App\Earning\Application\Command\Handler\UpdateSystemAmountHandler;
 use App\Earning\Application\Query\Handler\GetAdjustmentHistoryHandler;
-use App\Earning\Infrastructure\Persist\Write\SqliteEarningLineRepository;
+use App\Earning\Infrastructure\Persist\Write\MysqlEarningLineRepository;
+use App\Earning\Infrastructure\Persist\Write\MysqlSchema;
 use App\Earning\UI\Cli\DemoCommand;
 use App\Shared\Infrastructure\Clock\CarbonClock;
+use App\Shared\Infrastructure\Persist\MysqlConnectionFactory;
 
 require __DIR__ . '/../vendor/autoload.php';
 
 try {
-    $database = getenv('PAYROLL_DATABASE') ?: __DIR__ . '/../var/payroll-no-es-compact.sqlite';
-    $directory = dirname($database);
-    if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
-        throw new RuntimeException('Cannot create the database directory.');
-    }
-
     // Composition root: infrastructure is wired here, outside the UI command.
-    $earningLines = new SqliteEarningLineRepository(new PDO('sqlite:' . $database));
+    $connection = (new MysqlConnectionFactory())->create(
+        getenv('PAYROLL_DATABASE_DSN') ?: 'mysql:host=mysql;dbname=payroll;charset=utf8mb4',
+        getenv('PAYROLL_DATABASE_USER') ?: 'payroll',
+        getenv('PAYROLL_DATABASE_PASSWORD') ?: 'payroll',
+    );
+    (new MysqlSchema())->initialize($connection);
+    $earningLines = new MysqlEarningLineRepository($connection);
     $clock = new CarbonClock();
     $command = new DemoCommand(
         new CreateEarningLineHandler($earningLines, $clock),

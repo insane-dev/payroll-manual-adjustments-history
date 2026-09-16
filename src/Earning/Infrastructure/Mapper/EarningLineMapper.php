@@ -47,11 +47,7 @@ final class EarningLineMapper
             'line_id' => $this->binaryId($lineId->value),
             'id' => $this->binaryId($adjustment->id->value),
             'sequence' => $sequence,
-            'type' => match ($adjustment->type) {
-                EarningLineAdjustmentType::INITIAL => 0,
-                EarningLineAdjustmentType::SYSTEM => 1,
-                EarningLineAdjustmentType::MANUAL => 2,
-            },
+            'type' => $adjustment->type->value,
             'amount' => $this->signedInteger($adjustment->amount->getAmount()),
             'comment' => $adjustment->comment,
             'author_id' => $adjustment->authorId === null ? null : $this->binaryId($adjustment->authorId->value),
@@ -72,12 +68,7 @@ final class EarningLineMapper
             $row['comment'],
             $row['author_id'] === null ? null : new AdjustmentAuthorId(Uuid::fromBytes($row['author_id'])->toString()),
             $this->restoreTimestamp($row['recorded_at']),
-            match ($row['type']) {
-                0 => EarningLineAdjustmentType::INITIAL,
-                1 => EarningLineAdjustmentType::SYSTEM,
-                2 => EarningLineAdjustmentType::MANUAL,
-                default => throw new UnexpectedValueException('Unknown saved Adjustment Type.'),
-            },
+            EarningLineAdjustmentType::from($row['type']),
         ), $rows);
 
         return EarningLine::restore(
@@ -95,7 +86,7 @@ final class EarningLineMapper
     private function signedInteger(string $value): int
     {
         if (PHP_INT_SIZE !== 8) {
-            throw new LogicException('SQLite integer mapping requires 64-bit PHP.');
+            throw new LogicException('MySQL integer mapping requires 64-bit PHP.');
         }
         if (!is_numeric($value)) {
             throw new UnexpectedValueException('Expected a numeric storage value.');

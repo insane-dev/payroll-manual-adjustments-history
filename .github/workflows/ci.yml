@@ -21,13 +21,33 @@ jobs:
       fail-fast: false
       matrix:
         check: [analyse, cs-check, test]
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: payroll
+          MYSQL_USER: payroll
+          MYSQL_PASSWORD: payroll
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_ROOT_HOST: '%'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=30
+    env:
+      TEST_MYSQL_DSN: mysql:host=127.0.0.1;port=3306;charset=utf8mb4
+      TEST_MYSQL_USER: root
+      TEST_MYSQL_PASSWORD: root
     steps:
       - uses: actions/checkout@v7
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
-          extensions: bcmath, pdo_sqlite, dom, mbstring, xml, xmlwriter
+          extensions: bcmath, pdo_mysql, dom, mbstring, xml, xmlwriter
           tools: composer:v2
           coverage: none
       - name: Locate Composer cache

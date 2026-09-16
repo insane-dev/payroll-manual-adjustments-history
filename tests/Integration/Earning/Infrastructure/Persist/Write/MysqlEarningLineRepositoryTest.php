@@ -12,7 +12,9 @@ use App\Earning\Domain\Repository\EarningLineRepository;
 use App\Earning\Domain\Value\AdjustmentAuthorId;
 use App\Earning\Domain\Value\EarningLineAdjustmentId;
 use App\Earning\Domain\Value\EarningLineId;
-use App\Earning\Infrastructure\Persist\Write\SqliteEarningLineRepository;
+use App\Earning\Infrastructure\Persist\Write\MysqlEarningLineRepository;
+use App\Earning\Infrastructure\Persist\Write\MysqlSchema;
+use App\Tests\Shared\Infrastructure\Persist\MysqlTestDatabase;
 use Carbon\CarbonImmutable;
 use Money\Money;
 use OverflowException;
@@ -24,23 +26,24 @@ use PHPUnit\Framework\TestCase;
 use Ramsey\Uuid\Uuid;
 use RuntimeException;
 
-final class SqliteEarningLineRepositoryTest extends TestCase
+final class MysqlEarningLineRepositoryTest extends TestCase
 {
-    private string $database;
+    private MysqlTestDatabase $database;
     private PDO $connection;
     private EarningLineRepository $earningLines;
 
     protected function setUp(): void
     {
-        $this->database = tempnam(sys_get_temp_dir(), 'alcor-');
-        $this->connection = new PDO('sqlite:' . $this->database);
-        $this->earningLines = new SqliteEarningLineRepository($this->connection);
+        $this->database = new MysqlTestDatabase();
+        (new MysqlSchema())->initialize($this->database->connection());
+        $this->connection = $this->database->connection();
+        $this->earningLines = new MysqlEarningLineRepository($this->connection);
     }
 
     protected function tearDown(): void
     {
         unset($this->earningLines, $this->connection);
-        unlink($this->database);
+        $this->database->drop();
     }
 
     public function testStateAndAdjustmentsSurviveReopeningTheDatabaseWithExactAmountsAndAuditMetadata(): void
@@ -52,7 +55,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
         $this->earningLines->save($line);
         self::assertSame([], $line->pendingAdjustments());
 
-        $reopened = new SqliteEarningLineRepository(new PDO('sqlite:' . $this->database));
+        $reopened = new MysqlEarningLineRepository($this->database->connection());
         $restored = $reopened->get($line->id());
 
         self::assertSame($line->id()->value, $restored->id()->value);
@@ -70,7 +73,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
         $line = $this->line();
         $this->earningLines->save($line);
         $first = $this->earningLines->get($line->id());
-        $secondEarningLines = new SqliteEarningLineRepository(new PDO('sqlite:' . $this->database));
+        $secondEarningLines = new MysqlEarningLineRepository($this->database->connection());
         $stale = $secondEarningLines->get($line->id());
 
         if ($adjustmentWins) {
@@ -114,7 +117,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
         $this->earningLines->save($line);
         $line->addManualAdjustment($this->adjustment('10'));
         $line->addManualAdjustment($this->adjustment('20'));
-        $this->connection->exec("CREATE UNIQUE INDEX fail_second_adjustment ON earning_line_adjustments (earning_line_id) WHERE sequence > 1");
+        $this->connection->exec("ALTER TABLE earning_line_adjustments ADD CONSTRAINT fail_second_adjustment CHECK (sequence < 3)");
 
         try {
             $this->earningLines->save($line);
@@ -125,7 +128,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
             self::assertCount(2, $line->pendingAdjustments());
         }
 
-        $this->connection->exec('DROP INDEX fail_second_adjustment');
+        $this->connection->exec('ALTER TABLE earning_line_adjustments DROP CHECK fail_second_adjustment');
         $this->earningLines->save($line);
         self::assertSame('100030', $this->earningLines->get($line->id())->currentAmount()->getAmount());
         self::assertSame([], $line->pendingAdjustments());
@@ -158,7 +161,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
     public function testUnknownLineIsReportedExplicitly(): void
     {
         $this->expectException(EarningLineNotFound::class);
-        $this->earningLines->get(new EarningLineId(Uuid::uuid4()->toString()));
+        $this->earningLines->get(new EarningLineId(Uuid::uuid7()->toString()));
     }
 
     public function testSavingAnUnchangedLineDoesNotAppendDuplicateAdjustments(): void
@@ -223,26 +226,87 @@ final class SqliteEarningLineRepositoryTest extends TestCase
         $line->updateSystemAmount(Money::USD('105000'), $this->now());
         $line->addManualAdjustment($this->adjustment('-4555'));
         $this->earningLines->save($line);
-        $state = $this->query('SELECT typeof(id) AS id_type, length(id) AS id_bytes, typeof(current_amount) AS amount_type, current_amount, typeof(created_at) AS time_type FROM earning_lines')->fetch(PDO::FETCH_ASSOC);
-        self::assertSame('blob', $state['id_type']);
+        $state = $this->query('SELECT OCTET_LENGTH(id) AS id_bytes, current_amount FROM earning_lines')->fetch(PDO::FETCH_ASSOC);
         self::assertSame(16, $state['id_bytes']);
-        self::assertSame('integer', $state['amount_type']);
         self::assertSame(100445, $state['current_amount']);
-        self::assertSame('integer', $state['time_type']);
-        $rows = $this->query('SELECT type, amount, typeof(earning_line_id) AS line_id_type, length(author_id) AS author_bytes, typeof(recorded_at) AS time_type FROM earning_line_adjustments ORDER BY sequence')->fetchAll(PDO::FETCH_ASSOC);
-        self::assertSame([0, 1, 2], array_column($rows, 'type'));
+        $columns = $this->query("SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'earning_lines'")->fetchAll(PDO::FETCH_KEY_PAIR);
+        self::assertSame('binary(16)', $columns['id']);
+        self::assertSame('bigint', $columns['current_amount']);
+        self::assertSame('tinyint unsigned', $columns['manually_adjusted']);
+        self::assertSame('int unsigned', $columns['version']);
+        self::assertSame('bigint', $columns['created_at']);
+        $adjustmentColumns = $this->query("SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'earning_line_adjustments'")->fetchAll(PDO::FETCH_KEY_PAIR);
+        self::assertSame("enum('initial','system','manual')", $adjustmentColumns['type']);
+        $rows = $this->query('SELECT type, amount, OCTET_LENGTH(author_id) AS author_bytes FROM earning_line_adjustments ORDER BY sequence')->fetchAll(PDO::FETCH_ASSOC);
+        self::assertSame(['initial', 'system', 'manual'], array_column($rows, 'type'));
         self::assertSame([100000, 5000, -4555], array_column($rows, 'amount'));
-        self::assertSame('blob', $rows[2]['line_id_type']);
         self::assertSame(16, $rows[2]['author_bytes']);
-        self::assertSame('integer', $rows[2]['time_type']);
-        self::assertSame(0, (int) $this->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger'")->fetchColumn());
+        self::assertSame(0, (int) $this->query('SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE()')->fetchColumn());
+    }
+
+    public function testHistoryUsesTheClusteredIndexWithoutSorting(): void
+    {
+        $line = $this->line();
+        $line->updateSystemAmount(Money::USD('105000'), $this->now());
+        $line->addManualAdjustment($this->adjustment('-4555'));
+        $this->earningLines->save($line);
+        $indexes = $this->query("SELECT INDEX_NAME, GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS columns_in_order FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'earning_line_adjustments' GROUP BY INDEX_NAME")->fetchAll(PDO::FETCH_KEY_PAIR);
+        self::assertSame([
+            'PRIMARY' => 'earning_line_id,sequence',
+            'uq_line_adjustment_id' => 'earning_line_id,id',
+        ], $indexes);
+
+        $hexId = bin2hex(Uuid::fromString($line->id()->value)->getBytes());
+        $plan = $this->query("EXPLAIN SELECT * FROM earning_line_adjustments WHERE earning_line_id = UNHEX('$hexId') ORDER BY sequence")->fetch(PDO::FETCH_ASSOC);
+        self::assertSame('PRIMARY', $plan['key']);
+        self::assertStringNotContainsString('filesort', $plan['Extra'] ?? '');
+    }
+
+    public function testDatabaseRejectsAmountsOutsideSignedBigintRange(): void
+    {
+        $line = $this->line();
+        $this->earningLines->save($line);
+        $this->expectException(PDOException::class);
+        $this->query("UPDATE earning_lines SET current_amount = '9223372036854775808'");
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function invalidAdjustmentTypes(): iterable
+    {
+        yield 'unknown value' => ['unknown'];
+        yield 'empty value' => [''];
+        yield 'wrong case' => ['MANUAL'];
+    }
+
+    #[DataProvider('invalidAdjustmentTypes')]
+    public function testDatabaseRejectsInvalidAdjustmentTypes(string $type): void
+    {
+        $line = $this->line();
+        $line->addManualAdjustment($this->adjustment('10'));
+        $this->earningLines->save($line);
+        $statement = $this->connection->prepare('UPDATE earning_line_adjustments SET type = :type WHERE sequence = 2');
+        $this->expectException(PDOException::class);
+        $statement->execute(['type' => $type]);
+    }
+
+    public function testAdjustmentIdentityRemainsScopedToItsLine(): void
+    {
+        $first = $this->line();
+        $second = $this->line();
+        $adjustment = $this->adjustment('10');
+        $first->addManualAdjustment($adjustment);
+        $second->addManualAdjustment($adjustment);
+        $this->earningLines->save($first);
+        $this->earningLines->save($second);
+        self::assertSame('100010', $this->earningLines->get($first->id())->currentAmount()->getAmount());
+        self::assertSame('100010', $this->earningLines->get($second->id())->currentAmount()->getAmount());
     }
 
     /** @param numeric-string $amount */
     #[DataProvider('integerBoundaries')]
     public function testSignedIntegerBoundariesRoundTripExactly(string $amount): void
     {
-        $line = EarningLine::create(new EarningLineId(Uuid::uuid4()->toString()), Money::USD($amount), $this->now());
+        $line = EarningLine::create(new EarningLineId(Uuid::uuid7()->toString()), Money::USD($amount), $this->now());
         $this->earningLines->save($line);
         $restored = $this->earningLines->get($line->id());
         self::assertSame($amount, $restored->currentAmount()->getAmount());
@@ -261,7 +325,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
     #[DataProvider('outsideIntegerRange')]
     public function testOutOfRangeAmountsAreRejectedWithoutSavingAnything(string $amount): void
     {
-        $line = EarningLine::create(new EarningLineId(Uuid::uuid4()->toString()), Money::USD($amount), $this->now());
+        $line = EarningLine::create(new EarningLineId(Uuid::uuid7()->toString()), Money::USD($amount), $this->now());
         try {
             $this->earningLines->save($line);
             self::fail('An out-of-range amount was saved.');
@@ -281,7 +345,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
 
     public function testOutOfRangeDeltaRollsBackEvenWhenTheNewStateFits(): void
     {
-        $line = EarningLine::create(new EarningLineId(Uuid::uuid4()->toString()), Money::USD('-9223372036854775808'), $this->now());
+        $line = EarningLine::create(new EarningLineId(Uuid::uuid7()->toString()), Money::USD('-9223372036854775808'), $this->now());
         $this->earningLines->save($line);
         $line->updateSystemAmount(Money::USD('9223372036854775807'), $this->now());
         try {
@@ -298,7 +362,7 @@ final class SqliteEarningLineRepositoryTest extends TestCase
     public function testPreEpochTimestampsKeepTheirMicroseconds(): void
     {
         $time = CarbonImmutable::parse('1969-12-31T23:59:59.123456Z');
-        $line = EarningLine::create(new EarningLineId(Uuid::uuid4()->toString()), Money::USD('100'), $time);
+        $line = EarningLine::create(new EarningLineId(Uuid::uuid7()->toString()), Money::USD('100'), $time);
         $this->earningLines->save($line);
         $restored = $this->earningLines->get($line->id());
         self::assertSame('1969-12-31T23:59:59.123456+00:00', $restored->createdAt()->format('Y-m-d\TH:i:s.uP'));
@@ -307,17 +371,17 @@ final class SqliteEarningLineRepositoryTest extends TestCase
 
     private function line(): EarningLine
     {
-        return EarningLine::create(new EarningLineId(Uuid::uuid4()->toString()), Money::USD('100000'), $this->now());
+        return EarningLine::create(new EarningLineId(Uuid::uuid7()->toString()), Money::USD('100000'), $this->now());
     }
 
     /** @param numeric-string $amount */
     private function adjustment(string $amount): EarningLineAdjustment
     {
         return new EarningLineAdjustment(
-            new EarningLineAdjustmentId(Uuid::uuid4()->toString()),
+            new EarningLineAdjustmentId(Uuid::uuid7()->toString()),
             Money::USD($amount),
-            'Коригування: approved correction',
-            new AdjustmentAuthorId(Uuid::uuid4()->toString()),
+            'Коригування: approved correction 💰',
+            new AdjustmentAuthorId(Uuid::uuid7()->toString()),
             $this->now(),
         );
     }

@@ -2,13 +2,14 @@
 
 setup:
 	docker compose build
-	docker compose run --rm php composer install --no-interaction
+	docker compose up -d --wait mysql
+	docker compose run --rm --no-deps php composer install --no-interaction
 
 test:
 	docker compose run --rm php composer test
 
 test-unit:
-	docker compose run --rm php composer test:unit
+	docker compose run --rm --no-deps php composer test:unit
 
 test-integration:
 	docker compose run --rm php composer test:integration
@@ -20,19 +21,19 @@ demo:
 	docker compose run --rm php composer demo
 
 validate:
-	docker compose run --rm php composer validate --strict
+	docker compose run --rm --no-deps php composer validate --strict
 
 lint:
-	docker compose run --rm php composer lint
+	docker compose run --rm --no-deps php composer lint
 
 analyse:
-	docker compose run --rm php composer analyse
+	docker compose run --rm --no-deps php composer analyse
 
 cs-check:
-	docker compose run --rm php composer cs-check
+	docker compose run --rm --no-deps php composer cs-check
 
 cs-fix:
-	docker compose run --rm php composer cs-fix
+	docker compose run --rm --no-deps php composer cs-fix
 
 check: validate lint analyse cs-check test
 
