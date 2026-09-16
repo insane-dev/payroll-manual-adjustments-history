@@ -1,0 +1,55 @@
+{
+    "name": "alcor/earning-line-history",
+    "description": "Earning line state with immutable system and manual adjustment history",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.4",
+        "ext-bcmath": "*",
+        "ext-pdo": "*",
+        "ext-pdo_mysql": "*",
+        "moneyphp/money": "^4.0",
+        "nesbot/carbon": "^3.0",
+        "psr/clock": "^1.0",
+        "ramsey/uuid": "^4.7"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.0",
+        "phpstan/phpstan": "^2.1",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpunit/phpunit": "^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "App\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "platform": {
+            "php": "8.4.0"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:unit": "phpunit --testsuite Unit",
+        "test:integration": "phpunit --testsuite Integration",
+        "test:acceptance": "phpunit --testsuite Acceptance",
+        "demo": "php bin/demo.php",
+        "lint": "find src bin tests -name '*.php' -print0 | xargs -0 -n1 php -l",
+        "analyse": "phpstan analyse --no-progress --memory-limit=512M",
+        "cs-check": "php-cs-fixer fix --dry-run --diff",
+        "cs-fix": "php-cs-fixer fix",
+        "check": [
+            "@lint",
+            "@analyse",
+            "@cs-check",
+            "@test"
+        ]
+    }
+}

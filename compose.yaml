@@ -1,0 +1,38 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: payroll
+      MYSQL_USER: payroll
+      MYSQL_PASSWORD: payroll
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+  php:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      COMPOSER_HOME: /tmp/composer
+      PAYROLL_DATABASE_DSN: mysql:host=mysql;dbname=payroll;charset=utf8mb4
+      PAYROLL_DATABASE_USER: payroll
+      PAYROLL_DATABASE_PASSWORD: payroll
+      TEST_MYSQL_DSN: mysql:host=mysql;charset=utf8mb4
+      TEST_MYSQL_USER: root
+      TEST_MYSQL_PASSWORD: root
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: php bin/demo.php
+
+volumes:
+  mysql-data:
